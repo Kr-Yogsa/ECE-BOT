@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Chatbot</title>
+    <link rel="stylesheet" href="/style.css?v=20260401b">
+</head>
+<body class="chat-page dark-theme">
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+    <div class="chat-layout">
+        <aside id="chat-sidebar" class="chat-sidebar">
+            <div class="sidebar-panel">
+                <div class="sidebar-top">
+                    <h2>Chats</h2>
+                    <button id="new-chat-button" class="secondary-button small-button">New Chat</button>
+                </div>
+
+                <div id="chat-session-list" class="chat-session-list"></div>
+            </div>
+        </aside>
+
+        <section class="chat-main">
+            <section class="chat-content">
+                <div class="chat-toolbar">
+                    <button id="sidebar-toggle" class="sidebar-toggle-button" type="button">&#9776;</button>
+                    <div class="chat-toolbar-select">
+                        <button id="bot-select-button" class="bot-select-button" type="button" aria-expanded="false" aria-haspopup="listbox">
+                            <span id="bot-select-label">Loading...</span>
+                            <span class="bot-select-chevron">&#9662;</span>
+                        </button>
+                        <div id="bot-select-menu" class="bot-select-menu hidden-block" role="listbox" aria-label="Select bot"></div>
+                    </div>
+                    <div class="chat-toolbar-spacer"></div>
+                    <label class="theme-toggle">
+                        <span id="theme-label">Dark</span>
+                        <input type="checkbox" id="theme-toggle">
+                        <span class="theme-slider"></span>
+                    </label>
+                    <div class="profile-menu">
+                        <button id="profile-menu-button" class="profile-menu-button" type="button" aria-expanded="false" aria-haspopup="true">
+                            <span id="profile-avatar-text">U</span>
+                        </button>
+                        <div id="profile-menu-panel" class="profile-menu-panel hidden-block">
+                            <p class="profile-menu-label">Signed in as</p>
+                            <p id="current-user-email" class="profile-menu-email"></p>
+                            <button id="logout-button" class="ghost-button profile-logout-button" type="button">Logout</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="chat-empty-state" class="chat-empty-state">
+                    <p class="chat-empty-kicker">ECE-BOT</p>
+                    <h2>What's on your mind today?</h2>
+                </div>
+
+                <main id="chat-messages" class="chat-messages"></main>
+
+                <div id="smart-suggestions" class="smart-suggestions"></div>
+
+                <form id="chat-form" class="chat-form">
+                    <textarea id="chat-input" placeholder="Message your assistant..." rows="1" required></textarea>
+                    <button type="submit">Send</button>
+                </form>
+            </section>
+        </section>
+    </div>
+
+    <script src="/app.js?v=20260401b"></script>
+</body>
+</html>

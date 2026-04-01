@@ -1,0 +1,46 @@
+{
+  "context": "PLC stands for programmable logic controller and is used for industrial automation, ladder logic, digital I/O control, timers, counters, and process sequencing.",
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": ["hello", "hi", "hey", "good morning", "good evening"],
+      "responses": ["Hello! How can I help you with PLC systems today?"]
+    },
+    {
+      "tag": "plc_basic",
+      "patterns": [
+        "what is a plc",
+        "plc meaning",
+        "define plc",
+        "what does plc do"
+      ],
+      "responses": [
+        "A PLC is a programmable logic controller. It reads inputs, executes control logic, and updates outputs for industrial machines and processes."
+      ]
+    },
+    {
+      "tag": "plc_ladder",
+      "patterns": [
+        "what is ladder logic",
+        "explain ladder diagram",
+        "ladder logic basics",
+        "ladder programming meaning"
+      ],
+      "responses": [
+        "Ladder logic is a graphical programming style used in PLCs. It looks like electrical relay diagrams and is commonly used for machine control."
+      ]
+    },
+    {
+      "tag": "plc_troubleshoot",
+      "patterns": [
+        "plc input not working",
+        "plc output not turning on",
+        "troubleshoot plc",
+        "why plc is not running"
+      ],
+      "responses": [
+        "For PLC troubleshooting, check power supply, I/O wiring, PLC mode, communication status, and the ladder program conditions before replacing hardware."
+      ]
+    }
+  ]
+}

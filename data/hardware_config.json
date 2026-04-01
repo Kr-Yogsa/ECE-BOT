@@ -1,0 +1,22 @@
+{
+  "hardware": [
+    {
+      "id": "melfa",
+      "name": "MELFA",
+      "description": "Support for Mitsubishi MELFA industrial robots.",
+      "file": "melfa.json"
+    },
+    {
+      "id": "plc",
+      "name": "PLC",
+      "description": "Support for programmable logic controller questions.",
+      "file": "plc.json"
+    },
+    {
+      "id": "cnc",
+      "name": "CNC",
+      "description": "Support for CNC machine troubleshooting and usage.",
+      "file": "cnc.json"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signup | Hybrid Chatbot</title>
+    <link rel="stylesheet" href="/style.css?v=20260401b">
+</head>
+<body class="auth-page dark-theme">
+    <div class="auth-shell">
+        <section class="auth-showcase dark-panel">
+            <div class="brand-block">
+                <div class="auth-badge">ECE-BOT</div>
+                <h1>ECE-BOT</h1>
+                <p class="showcase-text">
+                    Crafted by Yajvendra and Jeet Bhai with &#10084;&#65039;
+                </p>
+            </div>
+        </section>
+
+        <section class="auth-card dark-card">
+            <h2>Signup</h2>
+            <p class="page-text">Enter your details, request OTP, then create your account.</p>
+
+            <form id="signup-form">
+                <label for="name">Name</label>
+                <input type="text" id="name" placeholder="Enter your name" required>
+
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="Enter your email" required>
+
+                <button type="button" id="send-signup-otp">Send OTP</button>
+
+                <label for="otp">OTP</label>
+                <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" inputmode="numeric" required>
+
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Create a password" required>
+
+                <div class="password-status">
+                    <div class="password-bar">
+                        <span id="password-strength-fill"></span>
+                    </div>
+                    <p id="password-strength-text" class="page-text">Use at least 8 characters for a stronger password.</p>
+                </div>
+
+                <button type="submit">Create Account</button>
+            </form>
+
+            <p id="message-box" class="message-box"></p>
+
+            <p class="page-text auth-footer">
+                Already have an account?
+                <a href="/">Login here</a>
+            </p>
+        </section>
+    </div>
+
+    <script src="/auth.js?v=20260401b"></script>
+</body>
+</html>

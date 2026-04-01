@@ -1,0 +1,46 @@
+{
+  "context": "CNC machines are computer numerical control machines used for machining operations such as milling, drilling, cutting, and automated part manufacturing.",
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": ["hello", "hi", "hey", "good morning", "good evening"],
+      "responses": ["Hello! How can I help you with CNC today?"]
+    },
+    {
+      "tag": "cnc_basic",
+      "patterns": [
+        "what is cnc",
+        "cnc machine meaning",
+        "define cnc",
+        "how cnc works"
+      ],
+      "responses": [
+        "CNC means computer numerical control. It uses programmed instructions to move tools and machine parts automatically with high precision."
+      ]
+    },
+    {
+      "tag": "cnc_homing",
+      "patterns": [
+        "how to home cnc machine",
+        "cnc homing steps",
+        "what is homing in cnc",
+        "home position cnc"
+      ],
+      "responses": [
+        "Homing a CNC machine means moving the axes to their reference position so the controller knows the machine's starting location."
+      ]
+    },
+    {
+      "tag": "cnc_tool_offset",
+      "patterns": [
+        "what is tool offset",
+        "set cnc tool offset",
+        "explain tool offset",
+        "tool offset meaning in cnc"
+      ],
+      "responses": [
+        "Tool offset stores the tool length or position difference so the CNC controller can machine accurately with different tools."
+      ]
+    }
+  ]
+}

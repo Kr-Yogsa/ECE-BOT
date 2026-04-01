@@ -1,0 +1,46 @@
+{
+  "context": "MELFA is a Mitsubishi industrial robot line used for automation, pick and place tasks, movement programming, and production workflows.",
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": ["hello", "hi", "hey", "good morning", "good evening"],
+      "responses": ["Hello! How can I help you with MELFA today?"]
+    },
+    {
+      "tag": "melfa_startup",
+      "patterns": [
+        "how do i start melfa robot",
+        "melfa startup steps",
+        "how to power on melfa",
+        "start robot sequence"
+      ],
+      "responses": [
+        "For a basic MELFA startup, check safety conditions, power on the controller, release emergency stop, and then enable the robot from the teach pendant."
+      ]
+    },
+    {
+      "tag": "melfa_teaching",
+      "patterns": [
+        "how to teach points in melfa",
+        "teach robot position",
+        "save robot position",
+        "record point in melfa"
+      ],
+      "responses": [
+        "To teach a point in MELFA, move the robot to the required position using jog controls and save that position from the teach pendant into the program point list."
+      ]
+    },
+    {
+      "tag": "melfa_alarm",
+      "patterns": [
+        "melfa alarm reset",
+        "how to clear robot alarm",
+        "robot has alarm",
+        "reset melfa error"
+      ],
+      "responses": [
+        "To clear a MELFA alarm, first identify the alarm cause, remove the issue safely, and then perform the alarm reset from the controller or teach pendant."
+      ]
+    }
+  ]
+}
