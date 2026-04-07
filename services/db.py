@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessionmaker
@@ -8,6 +9,7 @@ from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessi
 Base = declarative_base()
 engine = None
 SessionLocal = None
+IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
 class User(Base):
@@ -77,15 +79,27 @@ def init_db(database_path=None):
     database_url = os.getenv("DATABASE_URL", "").strip()
 
     if database_url:
-        engine = create_engine(normalize_database_url(database_url), future=True, pool_pre_ping=True)
+        engine = create_engine(
+            normalize_database_url(database_url),
+            future=True,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+        )
     else:
-        engine = create_engine(f"sqlite:///{database_path}", future=True)
+        engine = create_engine(
+            f"sqlite:///{database_path}",
+            future=True,
+            pool_pre_ping=True,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
 
     SessionLocal = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
 
 
 def get_now():
-    return datetime.utcnow().isoformat()
+    """Return timestamps in Indian Standard Time for display in Supabase."""
+    return datetime.now(IST_TIMEZONE).isoformat()
 
 
 def get_session():

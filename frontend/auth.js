@@ -8,6 +8,21 @@ function showMessage(text, isError = true) {
     messageBox.style.color = isError ? "#f97066" : "#6ce9a6";
 }
 
+function applyVersionLabel() {
+    const versionLabel = window.ECE_BOT_UI_CONFIG?.versionLabel?.trim();
+    if (!versionLabel) {
+        return;
+    }
+
+    document.querySelectorAll("[data-app-version]").forEach((element) => {
+        element.textContent = versionLabel;
+    });
+}
+
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test((email || "").trim());
+}
+
 function setOtpButtonLoading(button, isLoading) {
     if (!button) {
         return;
@@ -108,6 +123,8 @@ if (signupPasswordInput && passwordStrengthFill && passwordStrengthText) {
     });
 }
 
+applyVersionLabel();
+
 const sendSignupOtpButton = document.getElementById("send-signup-otp");
 if (sendSignupOtpButton) {
     restoreOtpCooldown(sendSignupOtpButton, "signupOtpCooldown");
@@ -121,6 +138,11 @@ if (sendSignupOtpButton) {
 
         if (!email) {
             showMessage("Enter your email first.");
+            return;
+        }
+
+        if (!isValidEmail(email)) {
+            showMessage("Please enter a valid email address.");
             return;
         }
 
@@ -168,54 +190,96 @@ if (signupForm) {
             password: document.getElementById("password").value.trim()
         };
 
-        const response = await fetch("/auth/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await readJson(response);
-
-        if (!response.ok) {
-            showMessage(data.error || "Signup failed.");
+        if (!isValidEmail(payload.email)) {
+            showMessage("Please enter a valid email address.");
             return;
         }
 
-        showMessage(data.message || "Signup successful. Please login.", false);
-        signupForm.reset();
-        setTimeout(() => {
-            const requestedBotId = getRequestedBotId();
-            window.location.href = requestedBotId ? `/?bot=${encodeURIComponent(requestedBotId)}` : "/";
-        }, 1200);
+        try {
+            const response = await fetch("/auth/signup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await readJson(response);
+
+            if (!response.ok) {
+                showMessage(data.error || "Signup failed.");
+                return;
+            }
+
+            showMessage(data.message || "Signup successful. Please login.", false);
+            signupForm.reset();
+            setTimeout(() => {
+                const requestedBotId = getRequestedBotId();
+                window.location.href = requestedBotId ? `/?bot=${encodeURIComponent(requestedBotId)}` : "/";
+            }, 1200);
+        } catch (error) {
+            showMessage("Unable to complete signup right now. Please try again.");
+        }
     });
 }
 
 const loginForm = document.getElementById("login-form");
 if (loginForm) {
+    let latestLoginAttemptId = 0;
+    const loginButton = loginForm.querySelector("button[type='submit']");
+    const defaultLoginButtonText = loginButton ? loginButton.textContent : "Login";
+
+    function setLoginLoading(isLoading) {
+        if (!loginButton) {
+            return;
+        }
+
+        loginButton.disabled = isLoading;
+        loginButton.textContent = isLoading ? "Logging in..." : defaultLoginButtonText;
+    }
+
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        latestLoginAttemptId += 1;
+        const attemptId = latestLoginAttemptId;
+        setLoginLoading(true);
+        showMessage("", false);
 
         const payload = {
             email: document.getElementById("email").value.trim(),
             password: document.getElementById("password").value.trim()
         };
 
-        const response = await fetch("/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const response = await fetch("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
 
-        const data = await readJson(response);
+            const data = await readJson(response);
 
-        if (!response.ok) {
-            showMessage(data.error || "Login failed.");
-            return;
+            if (attemptId !== latestLoginAttemptId) {
+                return;
+            }
+
+            if (!response.ok) {
+                showMessage(data.error || "Login failed.");
+                return;
+            }
+
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+            window.location.href = buildChatRedirectUrl();
+        } catch (error) {
+            if (attemptId !== latestLoginAttemptId) {
+                return;
+            }
+
+            showMessage("Unable to login right now. Please try again.");
+        } finally {
+            if (attemptId === latestLoginAttemptId) {
+                setLoginLoading(false);
+            }
         }
-
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = buildChatRedirectUrl();
     });
 }
 
@@ -263,6 +327,11 @@ if (showForgotPasswordButton && forgotPanel) {
 
         if (!resetEmail) {
             showMessage("Enter your email first.");
+            return;
+        }
+
+        if (!isValidEmail(resetEmail)) {
+            showMessage("Please enter a valid email address.");
             return;
         }
 

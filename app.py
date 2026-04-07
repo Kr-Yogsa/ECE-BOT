@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from functools import wraps
@@ -46,6 +47,17 @@ from services.ml_service import train_models
 OTP_PURPOSE_SIGNUP = "signup"
 OTP_PURPOSE_RESET = "reset_password"
 otp_attempt_times = {}
+EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
+
+
+def get_utc_now():
+    """Return a timezone-aware UTC datetime for comparisons."""
+    return datetime.now(timezone.utc)
+
+
+def is_valid_email(email):
+    """Validate a basic email format before sending OTP or creating accounts."""
+    return bool(EMAIL_PATTERN.fullmatch((email or "").strip()))
 
 
 def load_local_env():
@@ -152,7 +164,7 @@ def was_otp_requested_recently(email, purpose, cooldown_seconds=60):
     attempt_time = otp_attempt_times.get(attempt_key)
 
     if attempt_time:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = get_utc_now()
         elapsed_seconds = (now - attempt_time).total_seconds()
         if elapsed_seconds < cooldown_seconds:
             return True
@@ -167,7 +179,10 @@ def was_otp_requested_recently(email, purpose, cooldown_seconds=60):
         return False
 
     created_time = datetime.fromisoformat(created_at)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if created_time.tzinfo is None:
+        created_time = created_time.replace(tzinfo=timezone.utc)
+
+    now = get_utc_now()
     elapsed_seconds = (now - created_time).total_seconds()
 
     return elapsed_seconds < cooldown_seconds
@@ -176,7 +191,7 @@ def was_otp_requested_recently(email, purpose, cooldown_seconds=60):
 def remember_otp_attempt(email, purpose):
     """Store the latest OTP request attempt time, even if sending fails."""
     attempt_key = f"{purpose}:{email}"
-    otp_attempt_times[attempt_key] = datetime.now(timezone.utc).replace(tzinfo=None)
+    otp_attempt_times[attempt_key] = get_utc_now()
 
 
 def get_selected_hardware_id():
@@ -224,6 +239,9 @@ def request_signup_otp():
     if not email:
         return jsonify({"error": "Email is required."}), 400
 
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
     if find_user_by_email(email):
         return jsonify({"error": "User already exists."}), 409
 
@@ -249,6 +267,9 @@ def signup():
 
     if not name or not email or not password or not otp:
         return jsonify({"error": "Name, email, password, and OTP are required."}), 400
+
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
 
     if find_user_by_email(email):
         return jsonify({"error": "User already exists."}), 409
@@ -306,6 +327,9 @@ def request_password_reset_otp():
     if not email:
         return jsonify({"error": "Email is required."}), 400
 
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
     if not find_user_by_email(email):
         return jsonify({"error": "User not found."}), 404
 
@@ -330,6 +354,9 @@ def verify_password_reset_otp():
     if not email or not otp:
         return jsonify({"error": "Email and OTP are required."}), 400
 
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
     is_valid, error_message, _ = verify_otp_for_purpose(email, otp, OTP_PURPOSE_RESET)
     if not is_valid:
         return jsonify({"error": error_message}), 400
@@ -347,6 +374,9 @@ def reset_password():
 
     if not email or not otp or not new_password:
         return jsonify({"error": "Email, OTP, and new password are required."}), 400
+
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
 
     user = find_user_by_email(email)
     if not user:
@@ -443,16 +473,19 @@ def chat():
     else:
         session_id = create_new_chat_session(request.user_id, hardware_id, message)
 
-    reply = build_chat_reply(
-        user_id=request.user_id,
-        session_id=session_id,
-        hardware_id=hardware_id,
-        message=message,
-        hardware_item=hardware_data[hardware_id],
-        model_bundle=hardware_models.get(hardware_id),
-    )
-
-    return jsonify(reply)
+    try:
+        reply = build_chat_reply(
+            user_id=request.user_id,
+            session_id=session_id,
+            hardware_id=hardware_id,
+            message=message,
+            hardware_item=hardware_data[hardware_id],
+            model_bundle=hardware_models.get(hardware_id),
+        )
+        return jsonify(reply)
+    except Exception:
+        app.logger.exception("Chat request failed for user_id=%s session_id=%s", request.user_id, session_id)
+        return jsonify({"error": "Chat service is busy right now. Please try again in a moment."}), 503
 
 
 if __name__ == "__main__":

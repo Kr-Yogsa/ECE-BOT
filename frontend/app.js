@@ -33,6 +33,17 @@ let hardwareMap = {};
 let lastUserMessage = "";
 let requestedBotId = "";
 
+function applyVersionLabel() {
+    const versionLabel = window.ECE_BOT_UI_CONFIG?.versionLabel?.trim();
+    if (!versionLabel) {
+        return;
+    }
+
+    document.querySelectorAll("[data-app-version]").forEach((element) => {
+        element.textContent = versionLabel;
+    });
+}
+
 // ADDED
 const suggestionMap = {
     melfa: [
@@ -197,6 +208,28 @@ async function readJson(response) {
     } catch (error) {
         return {};
     }
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timeoutHandle);
+    }
+}
+
+function isTransientHttpStatus(statusCode) {
+    return [408, 429, 500, 502, 503, 504].includes(statusCode);
 }
 
 // ADDED
@@ -562,26 +595,47 @@ async function loadCurrentSession() {
 
 // ADDED
 async function requestReply(message, sessionId) {
-    const response = await fetch("/chat", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-            message: message,
-            session_id: sessionId
-        })
-    });
+    const maxAttempts = 3;
 
-    if (response.status === 401) {
-        logout();
-        return null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        let response;
+
+        try {
+            response = await fetchWithTimeout("/chat", {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    message: message,
+                    session_id: sessionId
+                })
+            });
+        } catch (error) {
+            if (attempt < maxAttempts) {
+                await sleep(500 * attempt);
+                continue;
+            }
+            return { error: "Chat request timed out. Please try again." };
+        }
+
+        if (response.status === 401) {
+            logout();
+            return null;
+        }
+
+        const data = await readJson(response);
+        if (response.ok) {
+            return data;
+        }
+
+        if (isTransientHttpStatus(response.status) && attempt < maxAttempts) {
+            await sleep(500 * attempt);
+            continue;
+        }
+
+        return { error: data.error || "Chat request failed. Please try again." };
     }
 
-    const data = await readJson(response);
-    if (!response.ok) {
-        return { error: data.error || "Chat request failed." };
-    }
-
-    return data;
+    return { error: "Chat request failed. Please try again." };
 }
 
 // ADDED
@@ -756,7 +810,7 @@ newChatButton.addEventListener("click", () => {
 logoutButton.addEventListener("click", logout);
 
 async function initializePage() {
-    // ADDED
+    applyVersionLabel();
     applyTheme(localStorage.getItem("theme") || "dark");
     autoResizeTextarea();
     updateChatEmptyState();
