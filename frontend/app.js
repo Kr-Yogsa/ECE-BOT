@@ -569,28 +569,57 @@ async function loadCurrentSession() {
         return;
     }
 
-    const response = await fetch(`/chat/session/${currentSessionId}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-    });
+    const maxAttempts = 2;
 
-    if (response.status === 401) {
-        logout();
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        let response;
+
+        try {
+            response = await fetchWithTimeout(`/chat/session/${currentSessionId}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            }, 20000);
+        } catch (error) {
+            if (attempt < maxAttempts) {
+                await sleep(400 * attempt);
+                continue;
+            }
+
+            if (!chatMessagesElement.children.length) {
+                addMessage("Unable to load this chat right now. Please try again.", "assistant", {
+                    label: getBotLabel(currentBotId),
+                    hardwareId: currentBotId
+                });
+            }
+            return;
+        }
+
+        if (response.status === 401) {
+            logout();
+            return;
+        }
+
+        const data = await readJson(response);
+        if (response.ok) {
+            currentBotId = data.session.hardware_id;
+            updateBotSelectionUi();
+            renderSuggestions();
+            renderHistoryMessages(data.messages, currentBotId);
+            return;
+        }
+
+        if (isTransientHttpStatus(response.status) && attempt < maxAttempts) {
+            await sleep(400 * attempt);
+            continue;
+        }
+
+        if (!chatMessagesElement.children.length) {
+            addMessage(data.error || "Failed to load chat.", "assistant", {
+                label: getBotLabel(currentBotId),
+                hardwareId: currentBotId
+            });
+        }
         return;
     }
-
-    const data = await readJson(response);
-    if (!response.ok) {
-        addMessage(data.error || "Failed to load chat.", "assistant", {
-            label: getBotLabel(currentBotId),
-            hardwareId: currentBotId
-        });
-        return;
-    }
-
-    currentBotId = data.session.hardware_id;
-    updateBotSelectionUi();
-    renderSuggestions();
-    renderHistoryMessages(data.messages, currentBotId);
 }
 
 // ADDED
@@ -716,7 +745,7 @@ async function sendMessage(message) {
     await loadChatSessions();
 
     if (isNewChat) {
-        await loadCurrentSession();
+        renderSuggestions();
     }
 }
 

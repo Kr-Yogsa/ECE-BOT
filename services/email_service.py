@@ -1,15 +1,127 @@
 import os
 import re
-import smtplib
-from email.message import EmailMessage
+import logging
+
+import requests
 
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
+logger = logging.getLogger(__name__)
+BREVO_SEND_EMAIL_URL = "https://api.brevo.com/v3/smtp/email"
 
 
-def is_local_otp_fallback_enabled():
-    """Allow showing OTP locally when SMTP is unavailable or blocked."""
-    return os.getenv("ALLOW_LOCAL_OTP_FALLBACK", "false").strip().lower() == "true"
+def is_email_debug_enabled():
+    """Optionally return the raw provider error to help with deployment debugging."""
+    return os.getenv("SHOW_SMTP_ERROR_DETAILS", "false").strip().lower() == "true"
+
+
+def with_debug_details(message, error_text):
+    """Append the provider error only when explicit email debugging is enabled."""
+    if not is_email_debug_enabled() or not error_text:
+        return message
+
+    return f"{message} Details: {error_text}"
+
+
+def format_provider_error(error):
+    """Create a readable provider error string even when str(error) is empty."""
+    error_text = str(error).strip()
+    if error_text:
+        return error_text
+
+    if getattr(error, "args", None):
+        joined_args = " | ".join(str(item) for item in error.args if str(item).strip())
+        if joined_args:
+            return joined_args
+
+    return repr(error)
+
+
+def get_brevo_api_key():
+    """Read the Brevo API key used for transactional email."""
+    return os.getenv("BREVO_API_KEY", "").strip()
+
+
+def send_otp_via_brevo_api(to_email, otp_code, purpose):
+    """Send OTP using Brevo's HTTPS API to avoid SMTP connectivity issues."""
+    api_key = get_brevo_api_key()
+    if not api_key:
+        return False, "Brevo API key is not configured."
+
+    mail_from = os.getenv("MAIL_FROM", "").strip()
+    mail_from_name = os.getenv("MAIL_FROM_NAME", "ECE-BOT").strip() or "ECE-BOT"
+    request_timeout = int(os.getenv("BREVO_API_TIMEOUT_SECONDS", "15").strip())
+
+    if not mail_from or not EMAIL_PATTERN.fullmatch(mail_from):
+        return False, "MAIL_FROM must be a valid verified sender email for Brevo."
+
+    action_text = "create your account" if purpose == "signup" else "reset your password"
+    subject = "Your OTP Code"
+    text_body = (
+        f"Hello,\n\n"
+        f"Your OTP to {action_text} is: {otp_code}\n\n"
+        f"This OTP will expire in 10 minutes.\n\n"
+        f"If you did not request this, you can ignore this email."
+    )
+
+    html_body = (
+        "<p>Hello,</p>"
+        f"<p>Your OTP to {action_text} is: <strong>{otp_code}</strong></p>"
+        "<p>This OTP will expire in 10 minutes.</p>"
+        "<p>If you did not request this, you can ignore this email.</p>"
+    )
+
+    payload = {
+        "sender": {"name": mail_from_name, "email": mail_from},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": text_body,
+        "htmlContent": html_body,
+    }
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            BREVO_SEND_EMAIL_URL,
+            json=payload,
+            headers=headers,
+            timeout=request_timeout,
+        )
+    except requests.RequestException as error:
+        error_text = format_provider_error(error)
+        logger.exception("Brevo API send failed for %s: %s", to_email, error_text)
+        return False, with_debug_details(
+            "Brevo API request failed. Please check your hosting network access and Brevo API configuration.",
+            error_text,
+        )
+
+    if response.ok:
+        return True, "OTP sent successfully."
+
+    error_text = response.text.strip()
+    logger.error("Brevo API rejected email for %s: %s", to_email, error_text)
+    lowered_error = error_text.lower()
+
+    if response.status_code in (401, 403):
+        return False, with_debug_details(
+            "Brevo API authentication failed. Please check BREVO_API_KEY.",
+            error_text,
+        )
+
+    if "sender" in lowered_error and "not valid" in lowered_error:
+        return False, with_debug_details(
+            "MAIL_FROM is not a verified Brevo sender email.",
+            error_text,
+        )
+
+    return False, with_debug_details(
+        "Brevo failed to send OTP email. Please check your Brevo sender and API settings.",
+        error_text,
+    )
 
 
 def send_otp_email(to_email, otp_code, purpose):
@@ -17,71 +129,7 @@ def send_otp_email(to_email, otp_code, purpose):
     if not EMAIL_PATTERN.fullmatch((to_email or "").strip()):
         return False, "Please enter a valid email address."
 
-    smtp_host = os.getenv("SMTP_HOST", "").strip()
-    smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
-    smtp_username = os.getenv("SMTP_USERNAME", "").strip()
-    smtp_password = os.getenv("SMTP_PASSWORD", "").strip().replace(" ", "")
-    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
-    smtp_use_ssl = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
-    smtp_timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "12").strip())
-    mail_from = os.getenv("MAIL_FROM", smtp_username or "no-reply@example.com").strip()
+    if not get_brevo_api_key():
+        return False, "Brevo API key is not configured."
 
-    if not smtp_host or not smtp_username or not smtp_password:
-        if is_local_otp_fallback_enabled():
-            print(f"OTP fallback enabled for {to_email}: {otp_code}")
-            return True, f"SMTP is not configured. Use this OTP for now: {otp_code}"
-
-        return False, "SMTP is not configured. Please set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, and MAIL_FROM."
-
-    action_text = "create your account" if purpose == "signup" else "reset your password"
-
-    message = EmailMessage()
-    message["Subject"] = "Your OTP Code"
-    message["From"] = mail_from
-    message["To"] = to_email
-    message.set_content(
-        f"""
-Hello,
-
-Your OTP to {action_text} is: {otp_code}
-
-This OTP will expire in 10 minutes.
-
-If you did not request this, you can ignore this email.
-""".strip()
-    )
-
-    try:
-        if smtp_use_ssl or smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-                server.ehlo()
-                server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-                server.ehlo()
-                if smtp_use_tls:
-                    server.starttls()
-                    server.ehlo()
-                server.login(smtp_username, smtp_password)
-                server.send_message(message)
-        return True, "OTP sent successfully."
-    except Exception as error:
-        error_text = str(error)
-        lowered_error = error_text.lower()
-        print(f"SMTP send failed for {to_email}: {error_text}")
-
-        if is_local_otp_fallback_enabled():
-            print(f"OTP fallback enabled for {to_email}: {otp_code}")
-            return True, f"Email send failed, but local OTP fallback is active. Use this OTP: {otp_code}"
-
-        if "smtpclientauthentication is disabled" in lowered_error:
-            return False, "Outlook SMTP auth is disabled for this mailbox. Please enable SMTP AUTH in your Outlook account settings."
-
-        if "authentication unsuccessful" in lowered_error or "535" in lowered_error:
-            return False, "Email login failed. Please check your Outlook email, password, and app password settings."
-
-        if "timed out" in lowered_error or "timeout" in lowered_error:
-            return False, "SMTP connection timed out. Please check whether your hosting provider allows outbound SMTP connections."
-
-        return False, "Failed to send OTP email. Please check your SMTP settings and try again."
+    return send_otp_via_brevo_api(to_email, otp_code, purpose)
