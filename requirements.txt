@@ -1,7 +1,17 @@
+# Web server
 Flask==3.0.3
 gunicorn==23.0.0
+
+# Auth and HTTP integrations
 PyJWT==2.9.0
 requests==2.32.3
-scikit-learn==1.7.2
-SQLAlchemy==2.0.36
+
+# Database
 psycopg[binary]>=3.2,<3.3
+SQLAlchemy>=2.0,<2.1
+
+# Chat intent model
+scikit-learn==1.7.2
+
+# MQTT telemetry worker
+paho-mqtt==2.1.0

@@ -4,10 +4,185 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hybrid Chatbot</title>
-    <link rel="stylesheet" href="/style.css?v=20260407a">
+    <link rel="stylesheet" href="/style.css?v=20260424c">
 </head>
 <body class="chat-page dark-theme">
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
+    <div id="operator-modal" class="operator-modal hidden-block" aria-hidden="true">
+        <div id="operator-modal-backdrop" class="operator-modal-backdrop"></div>
+        <section class="operator-modal-card" role="dialog" aria-modal="true" aria-labelledby="operator-modal-title">
+            <div class="operator-modal-header">
+                <div>
+                    <p class="operator-modal-kicker">Admin Controls</p>
+                    <h2 id="operator-modal-title">Manage Operators</h2>
+                    <p class="page-text operator-modal-subtitle">
+                        Create operator accounts, review invited members, and control who can access sensor dashboards.
+                    </p>
+                </div>
+                <button id="close-operator-panel" type="button" class="ghost-button operator-close-button">Close</button>
+            </div>
+
+            <div class="operator-modal-grid">
+                <section class="operator-create-card">
+                    <div class="operator-admin-strip">
+                        <div class="operator-admin-card">
+                            <p class="operator-summary-label">Current Admin</p>
+                            <strong id="operator-admin-name">Admin</strong>
+                            <span id="operator-admin-email" class="page-text"></span>
+                        </div>
+                        <div class="operator-stats-grid">
+                            <div class="operator-stat-card">
+                                <span>Total</span>
+                                <strong id="operator-total-count">0</strong>
+                            </div>
+                            <div class="operator-stat-card">
+                                <span>Active</span>
+                                <strong id="operator-active-count">0</strong>
+                            </div>
+                            <div class="operator-stat-card">
+                                <span>Pending</span>
+                                <strong id="operator-pending-count">0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="operator-section-header">
+                        <h3>Grant Access</h3>
+                        <p class="page-text">Add an operator by email.</p>
+                    </div>
+
+                    <form id="operator-create-form" class="operator-create-form">
+                        <div class="operator-field">
+                            <label for="operator-email">Operator Email</label>
+                            <input type="email" id="operator-email" placeholder="Enter email address" required>
+                        </div>
+                        <button type="submit">Create Operator</button>
+                    </form>
+
+                    <p id="operator-panel-message" class="message-box operator-message-box"></p>
+                </section>
+            </div>
+
+            <section class="operator-list-card">
+                <div class="operator-section-header">
+                    <h3>All Operators</h3>
+                    <p class="page-text">Only current operator accounts appear here.</p>
+                </div>
+                <div id="operator-list" class="operator-list"></div>
+            </section>
+        </section>
+    </div>
+    <div id="machine-stats-modal" class="operator-modal hidden-block" aria-hidden="true">
+        <div id="machine-stats-modal-backdrop" class="operator-modal-backdrop"></div>
+        <section class="operator-modal-card machine-stats-card" role="dialog" aria-modal="true" aria-labelledby="machine-stats-title">
+            <div class="operator-modal-header">
+                <div>
+                    <p class="operator-modal-kicker">Machine Stats</p>
+                    <h2 id="machine-stats-title">Machine Activity</h2>
+                    <p class="page-text operator-modal-subtitle">
+                        Live readings and time-based sensor summaries for operators.
+                    </p>
+                </div>
+                <button id="close-machine-stats" type="button" class="ghost-button operator-close-button">Close</button>
+            </div>
+
+            <section id="machine-metrics-section" class="machine-stats-section" aria-live="polite">
+                <div class="machine-stats-topbar">
+                    <div>
+                        <p class="machine-stats-machine-label">Selected Machine</p>
+                        <strong id="machine-stats-machine-name" class="machine-stats-machine-name">--</strong>
+                        <span id="machine-stats-status" class="machine-status-badge is-off">Components are off</span>
+                    </div>
+                    <div id="machine-stats-range-tabs" class="machine-range-tabs" role="tablist" aria-label="Machine stats range">
+                        <button type="button" class="machine-range-tab" data-range="last_1_minute">1 Min</button>
+                        <button type="button" class="machine-range-tab is-selected" data-range="last_1_hour">1H</button>
+                        <button type="button" class="machine-range-tab" data-range="today">Today</button>
+                        <button type="button" class="machine-range-tab" data-range="yesterday">Yesterday</button>
+                    </div>
+                </div>
+
+                <section class="machine-highlight-card">
+                    <p id="machine-stats-range-label" class="machine-highlight-label">Last 1 hour</p>
+                    <strong id="machine-stats-reading-count" class="machine-highlight-value">0 readings</strong>
+                    <span id="machine-stats-last-updated" class="machine-highlight-subtitle">No telemetry yet</span>
+                </section>
+
+                <div class="machine-metrics-grid">
+                    <article class="machine-metric-card">
+                        <span>Temperature</span>
+                        <strong id="machine-metric-temperature">--</strong>
+                        <div id="machine-metric-temperature-meta" class="machine-metric-meta">
+                            <span>Avg --</span>
+                            <span>Min --</span>
+                            <span>Max --</span>
+                        </div>
+                    </article>
+                    <article class="machine-metric-card">
+                        <span>Humidity</span>
+                        <strong id="machine-metric-humidity">--</strong>
+                        <div id="machine-metric-humidity-meta" class="machine-metric-meta">
+                            <span>Avg --</span>
+                            <span>Min --</span>
+                            <span>Max --</span>
+                        </div>
+                    </article>
+                    <article class="machine-metric-card">
+                        <span>Vibration</span>
+                        <strong id="machine-metric-vibration">--</strong>
+                        <div id="machine-metric-vibration-meta" class="machine-metric-meta">
+                            <span>Avg --</span>
+                            <span>Min --</span>
+                            <span>Max --</span>
+                        </div>
+                    </article>
+                </div>
+
+                <section class="machine-trend-card">
+                    <div class="machine-trend-header">
+                        <div>
+                            <p class="machine-highlight-label">Readings Chart</p>
+                            <strong class="machine-trend-title">Sensor readings by range</strong>
+                        </div>
+                        <span id="machine-trend-total" class="machine-highlight-subtitle">0 total readings</span>
+                    </div>
+                    <div id="machine-trend-bars" class="machine-trend-bars" aria-label="Machine reading count chart"></div>
+                </section>
+
+            </section>
+        </section>
+    </div>
+    <div id="live-machine-modal" class="operator-modal hidden-block" aria-hidden="true">
+        <div id="live-machine-modal-backdrop" class="operator-modal-backdrop"></div>
+        <section class="operator-modal-card machine-live-modal-card" role="dialog" aria-modal="true" aria-labelledby="live-machine-title">
+            <div class="operator-modal-header">
+                <div>
+                    <p class="operator-modal-kicker">Live Machine</p>
+                    <h2 id="live-machine-title">Live Camera</h2>
+                    <p class="page-text operator-modal-subtitle">
+                        Remote Raspberry Pi camera stream for the selected machine.
+                    </p>
+                </div>
+                <button id="close-live-machine" type="button" class="ghost-button operator-close-button">Close</button>
+            </div>
+
+            <section id="machine-live-section" class="machine-live-card">
+                <div class="machine-live-header">
+                    <div>
+                        <p class="machine-highlight-label">Selected Machine</p>
+                        <strong id="machine-live-title" class="machine-live-title">Camera feed</strong>
+                        <span id="machine-live-status" class="machine-highlight-subtitle">Live stream is stopped.</span>
+                    </div>
+                    <div class="machine-live-actions">
+                        <button id="start-live-machine" type="button" class="secondary-button small-button">Start Live</button>
+                        <button id="stop-live-machine" type="button" class="ghost-button small-button">Stop</button>
+                    </div>
+                </div>
+                <div id="machine-live-frame" class="machine-live-frame">
+                    <img id="machine-live-image" alt="Live machine camera feed">
+                </div>
+            </section>
+        </section>
+    </div>
     <div class="chat-layout">
         <aside id="chat-sidebar" class="chat-sidebar">
             <div class="sidebar-panel">
@@ -44,6 +219,10 @@
                         <div id="profile-menu-panel" class="profile-menu-panel hidden-block">
                             <p class="profile-menu-label">Signed in as</p>
                             <p id="current-user-email" class="profile-menu-email"></p>
+                            <p id="current-user-role" class="profile-menu-role hidden-block"></p>
+                            <button id="open-operator-panel" class="ghost-button profile-logout-button hidden-block" type="button">Manage Operators</button>
+                            <button id="open-machine-stats" class="ghost-button profile-logout-button hidden-block" type="button">Machine Stats</button>
+                            <button id="open-live-machine" class="ghost-button profile-logout-button hidden-block" type="button">Live Machine</button>
                             <button id="logout-button" class="ghost-button profile-logout-button" type="button">Logout</button>
                             <p class="profile-version-indicator" data-app-version></p>
                         </div>
@@ -66,7 +245,7 @@
         </section>
     </div>
 
-    <script src="/ui-config.js?v=20260407a"></script>
-    <script src="/app.js?v=20260407a"></script>
+    <script src="/ui-config.js?v=20260424c"></script>
+    <script src="/app.js?v=20260424c"></script>
 </body>
 </html>

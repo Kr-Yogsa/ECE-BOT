@@ -12,4 +12,6 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "gunicorn -w 2 --threads 8 --worker-class gthread --timeout 120 --graceful-timeout 30 -b 0.0.0.0:$PORT app:app"]
+RUN chmod +x /app/start_services.sh
+
+CMD ["/app/start_services.sh"]

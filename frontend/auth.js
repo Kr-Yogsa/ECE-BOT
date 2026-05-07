@@ -40,6 +40,15 @@ function setOtpButtonLoading(button, isLoading) {
     button.textContent = "Send OTP";
 }
 
+function setButtonLoading(button, isLoading, loadingText, defaultText) {
+    if (!button) {
+        return;
+    }
+
+    button.disabled = isLoading;
+    button.textContent = isLoading ? loadingText : defaultText;
+}
+
 async function readJson(response) {
     try {
         return await response.json();
@@ -100,6 +109,37 @@ function restoreOtpCooldown(button, storageKey) {
 const signupPasswordInput = document.getElementById("password");
 const passwordStrengthFill = document.getElementById("password-strength-fill");
 const passwordStrengthText = document.getElementById("password-strength-text");
+const signupOtpSection = document.getElementById("signup-otp-section");
+const verifySignupOtpButton = document.getElementById("verify-signup-otp");
+const signupPasswordSection = document.getElementById("signup-password-section");
+
+let isSignupOtpVerified = false;
+
+function setSignupOtpVerified(isVerified) {
+    isSignupOtpVerified = isVerified;
+
+    if (signupPasswordSection) {
+        signupPasswordSection.classList.toggle("hidden-block", !isVerified);
+    }
+
+    if (!isVerified && signupPasswordInput) {
+        signupPasswordInput.value = "";
+        if (passwordStrengthFill) {
+            passwordStrengthFill.style.width = "0";
+        }
+        if (passwordStrengthText) {
+            passwordStrengthText.textContent = "Use at least 8 characters for a stronger password.";
+        }
+    }
+}
+
+function setSignupOtpSectionVisible(isVisible) {
+    if (!signupOtpSection) {
+        return;
+    }
+
+    signupOtpSection.classList.toggle("hidden-block", !isVisible);
+}
 
 if (signupPasswordInput && passwordStrengthFill && passwordStrengthText) {
     signupPasswordInput.addEventListener("input", () => {
@@ -128,6 +168,10 @@ applyVersionLabel();
 const sendSignupOtpButton = document.getElementById("send-signup-otp");
 if (sendSignupOtpButton) {
     restoreOtpCooldown(sendSignupOtpButton, "signupOtpCooldown");
+    const savedSignupOtpCooldown = Number(localStorage.getItem("signupOtpCooldown") || "0");
+    if (savedSignupOtpCooldown > Date.now()) {
+        setSignupOtpSectionVisible(true);
+    }
 
     sendSignupOtpButton.addEventListener("click", async () => {
         if (sendSignupOtpButton.disabled || sendSignupOtpButton.dataset.loading === "true") {
@@ -146,6 +190,8 @@ if (sendSignupOtpButton) {
             return;
         }
 
+        setSignupOtpSectionVisible(false);
+        setSignupOtpVerified(false);
         setOtpButtonLoading(sendSignupOtpButton, true);
 
         try {
@@ -158,8 +204,10 @@ if (sendSignupOtpButton) {
             const data = await readJson(response);
 
             if (response.status === 429) {
+                setSignupOtpSectionVisible(true);
                 showMessage(data.error || "OTP already sent. Please wait before requesting again.");
                 startOtpCooldown(sendSignupOtpButton, "signupOtpCooldown");
+                document.getElementById("otp")?.focus();
                 return;
             }
 
@@ -169,8 +217,10 @@ if (sendSignupOtpButton) {
                 return;
             }
 
-            showMessage(data.message || "OTP sent to your email successfully.", false);
+            setSignupOtpSectionVisible(true);
+            showMessage(data.message || "OTP sent to your email. Now verify the OTP to continue.", false);
             startOtpCooldown(sendSignupOtpButton, "signupOtpCooldown");
+            document.getElementById("otp")?.focus();
         } catch (error) {
             showMessage("Unable to send OTP right now. Please try again.");
             setOtpButtonLoading(sendSignupOtpButton, false);
@@ -178,10 +228,73 @@ if (sendSignupOtpButton) {
     });
 }
 
+if (verifySignupOtpButton) {
+    const defaultVerifyOtpText = verifySignupOtpButton.textContent || "Verify OTP";
+
+    verifySignupOtpButton.addEventListener("click", async () => {
+        if (verifySignupOtpButton.disabled) {
+            return;
+        }
+
+        const email = document.getElementById("email").value.trim();
+        const otp = document.getElementById("otp").value.trim();
+
+        if (!email || !otp) {
+            showMessage("Enter your email and OTP first.");
+            return;
+        }
+
+        if (!isValidEmail(email)) {
+            showMessage("Please enter a valid email address.");
+            return;
+        }
+
+        setButtonLoading(verifySignupOtpButton, true, "Verifying OTP...", defaultVerifyOtpText);
+
+        try {
+            const response = await fetch("/auth/verify-signup-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, otp })
+            });
+
+            const data = await readJson(response);
+
+            if (!response.ok) {
+                setSignupOtpVerified(false);
+                showMessage(data.error || "OTP verification failed.");
+                return;
+            }
+
+            setSignupOtpVerified(true);
+            showMessage(data.message || "OTP verified. You can now create your password.", false);
+            setButtonLoading(verifySignupOtpButton, true, "OTP Verified", defaultVerifyOtpText);
+            signupPasswordInput?.focus();
+        } catch (error) {
+            setSignupOtpVerified(false);
+            showMessage("Unable to verify OTP right now. Please try again.");
+        } finally {
+            if (!isSignupOtpVerified) {
+                setButtonLoading(verifySignupOtpButton, false, "Verifying OTP...", defaultVerifyOtpText);
+            }
+        }
+    });
+}
+
 const signupForm = document.getElementById("signup-form");
 if (signupForm) {
+    let latestSignupAttemptId = 0;
+    const signupButton = signupForm.querySelector("button[type='submit']");
+    const defaultSignupButtonText = signupButton ? signupButton.textContent : "Create Account";
+
     signupForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        latestSignupAttemptId += 1;
+        const attemptId = latestSignupAttemptId;
+
+        if (signupButton?.disabled) {
+            return;
+        }
 
         const payload = {
             name: document.getElementById("name").value.trim(),
@@ -190,10 +303,23 @@ if (signupForm) {
             password: document.getElementById("password").value.trim()
         };
 
+        if (!payload.name || !payload.email || !payload.otp || !payload.password) {
+            showMessage("Name, email, OTP, and password are required.");
+            return;
+        }
+
         if (!isValidEmail(payload.email)) {
             showMessage("Please enter a valid email address.");
             return;
         }
+
+        if (!isSignupOtpVerified) {
+            showMessage("Verify the OTP before creating your account.");
+            return;
+        }
+
+        showMessage("", false);
+        setButtonLoading(signupButton, true, "Creating Account...", defaultSignupButtonText);
 
         try {
             const response = await fetch("/auth/signup", {
@@ -204,22 +330,66 @@ if (signupForm) {
 
             const data = await readJson(response);
 
+            if (attemptId !== latestSignupAttemptId) {
+                return;
+            }
+
             if (!response.ok) {
+                if (response.status === 409) {
+                    showMessage("Account already exists. Redirecting to login...", false);
+                    setButtonLoading(signupButton, true, "Redirecting...", defaultSignupButtonText);
+                    setTimeout(() => {
+                        const requestedBotId = getRequestedBotId();
+                        window.location.href = requestedBotId ? `/?bot=${encodeURIComponent(requestedBotId)}` : "/";
+                    }, 1200);
+                    return;
+                }
+
                 showMessage(data.error || "Signup failed.");
                 return;
             }
 
             showMessage(data.message || "Signup successful. Please login.", false);
+            setButtonLoading(signupButton, true, "Account Created", defaultSignupButtonText);
             signupForm.reset();
+            setSignupOtpSectionVisible(false);
+            setSignupOtpVerified(false);
             setTimeout(() => {
                 const requestedBotId = getRequestedBotId();
                 window.location.href = requestedBotId ? `/?bot=${encodeURIComponent(requestedBotId)}` : "/";
             }, 1200);
         } catch (error) {
+            if (attemptId !== latestSignupAttemptId) {
+                return;
+            }
+
             showMessage("Unable to complete signup right now. Please try again.");
+        } finally {
+            if (attemptId === latestSignupAttemptId && signupButton && signupButton.textContent !== "Account Created" && signupButton.textContent !== "Redirecting...") {
+                setButtonLoading(signupButton, false, "Creating Account...", defaultSignupButtonText);
+            }
         }
     });
 }
+
+document.getElementById("email")?.addEventListener("input", () => {
+    setSignupOtpSectionVisible(false);
+    setSignupOtpVerified(false);
+    if (verifySignupOtpButton) {
+        verifySignupOtpButton.disabled = false;
+        verifySignupOtpButton.textContent = "Verify OTP";
+    }
+});
+
+document.getElementById("otp")?.addEventListener("input", () => {
+    if (isSignupOtpVerified) {
+        setSignupOtpVerified(false);
+    }
+    if (verifySignupOtpButton) {
+        verifySignupOtpButton.disabled = false;
+        verifySignupOtpButton.textContent = "Verify OTP";
+    }
+});
 
 const loginForm = document.getElementById("login-form");
 if (loginForm) {

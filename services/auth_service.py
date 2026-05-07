@@ -19,6 +19,8 @@ def get_password_hash(password):
 
 def verify_password(password, password_hash):
     """Compare a plain password with the saved hash."""
+    if not password_hash:
+        return False
     return check_password_hash(password_hash, password)
 
 
@@ -44,11 +46,12 @@ def is_otp_expired(expires_at):
     return datetime.now(timezone.utc) > expires_at_value
 
 
-def create_token(user_id, email):
+def create_token(user_id, email, role):
     """Create a JWT token for the logged-in user."""
     payload = {
         "user_id": user_id,
         "email": email,
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

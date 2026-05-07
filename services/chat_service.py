@@ -42,6 +42,8 @@ def generate_chat_title(hardware_id, first_message):
 def build_chat_reply(user_id, session_id, hardware_id, message, hardware_item, model_bundle):
     """Create a bot reply and save both sides of the conversation."""
     previous_messages = get_chat_messages(session_id, user_id)
+    add_chat_message(session_id, "user", message)
+
     prediction = predict_intent(model_bundle, message)
 
     if prediction and prediction["confidence"] > INTENT_CONFIDENCE_THRESHOLD:
@@ -57,7 +59,6 @@ def build_chat_reply(user_id, session_id, hardware_id, message, hardware_item, m
         response_source = "LLM"
         confidence = prediction["confidence"] if prediction else 0.0
 
-    add_chat_message(session_id, "user", message)
     add_chat_message(session_id, "assistant", bot_response, response_source, confidence)
 
     return {

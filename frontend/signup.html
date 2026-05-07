@@ -21,7 +21,7 @@
 
         <section class="auth-card dark-card">
             <h2>Signup</h2>
-            <p class="page-text">Enter your details, request OTP, then create your account.</p>
+            <p class="page-text">Enter your details, request OTP, then create your account. Invited operators can also finish account setup here.</p>
 
             <form id="signup-form">
                 <label for="name">Name</label>
@@ -32,20 +32,26 @@
 
                 <button type="button" id="send-signup-otp">Send OTP</button>
 
-                <label for="otp">OTP</label>
-                <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" inputmode="numeric" required>
+                <div id="signup-otp-section" class="hidden-block">
+                    <label for="otp">OTP</label>
+                    <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" inputmode="numeric" required>
 
-                <label for="password">Password</label>
-                <input type="password" id="password" placeholder="Create a password" required>
-
-                <div class="password-status">
-                    <div class="password-bar">
-                        <span id="password-strength-fill"></span>
-                    </div>
-                    <p id="password-strength-text" class="page-text">Use at least 8 characters for a stronger password.</p>
+                    <button type="button" id="verify-signup-otp">Verify OTP</button>
                 </div>
 
-                <button type="submit">Create Account</button>
+                <div id="signup-password-section" class="hidden-block">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Create a password" required>
+
+                    <div class="password-status">
+                        <div class="password-bar">
+                            <span id="password-strength-fill"></span>
+                        </div>
+                        <p id="password-strength-text" class="page-text">Use at least 8 characters for a stronger password.</p>
+                    </div>
+
+                    <button type="submit">Create Account</button>
+                </div>
             </form>
 
             <p id="message-box" class="message-box"></p>

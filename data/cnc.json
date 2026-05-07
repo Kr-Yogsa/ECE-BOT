@@ -41,6 +41,21 @@
       "responses": [
         "Tool offset stores the tool length or position difference so the CNC controller can machine accurately with different tools."
       ]
+    },
+    {
+      "tag": "cnc_common_problems",
+      "patterns": [
+        "common cnc problems and solutions",
+        "what are the common problems in cnc",
+        "cnc common problems",
+        "cnc troubleshooting problems",
+        "cnc machine common faults",
+        "cnc machine problems and solutions",
+        "what problems happen in cnc machine"
+      ],
+      "responses": [
+        "Common CNC problems include tool wear or breakage, wrong tool offset, workpiece misalignment, poor surface finish, vibration or chatter, spindle overheating, axis homing errors, program or G-code mistakes, coolant flow problems, and loose fixtures. Start troubleshooting by checking the tool condition, offsets, work holding, program coordinates, machine zero, coolant, and alarm messages before running the job again."
+      ]
     }
   ]
 }

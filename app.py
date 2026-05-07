@@ -1,7 +1,8 @@
 import os
 import re
 import sys
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, jsonify, redirect, request, send_from_directory, session
@@ -28,24 +29,47 @@ from services.chat_service import (
     get_user_chat_session,
     get_user_chat_sessions,
 )
+from services.config_service import load_local_env
 from services.db import (
     clear_otps,
+    count_users_by_role,
     create_otp_request,
     create_tables,
     create_user,
+    delete_user_by_id,
+    find_user_by_id,
     find_user_by_email,
+    get_machine_dashboard,
+    get_machine_live_stream,
     get_latest_otp_request,
+    get_latest_machine_telemetry,
     init_db,
+    list_machine_telemetry,
+    list_users_by_role,
     mark_otp_used,
+    update_user_account_setup,
     update_user_password,
+    promote_user_to_operator,
+    upsert_machine_live_stream,
+    update_user_role,
+    update_user_status,
 )
-from services.email_service import send_otp_email
+from services.email_service import (
+    send_operator_invite_email,
+    send_operator_promotion_email,
+    send_operator_removal_email,
+    send_otp_email,
+)
 from services.hardware_service import get_hardware_list, load_hardware_data
 from services.ml_service import train_models
 
 
 OTP_PURPOSE_SIGNUP = "signup"
 OTP_PURPOSE_RESET = "reset_password"
+ROLE_ADMIN = "admin"
+ROLE_OPERATOR = "operator"
+ROLE_USER = "user"
+MACHINE_OFFLINE_AFTER_SECONDS = int(os.getenv("MACHINE_OFFLINE_AFTER_SECONDS", "15"))
 otp_attempt_times = {}
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 
@@ -55,39 +79,82 @@ def get_utc_now():
     return datetime.now(timezone.utc)
 
 
+def parse_iso_datetime(value):
+    if not value:
+        return None
+
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
+
+
+def build_machine_status(latest):
+    if not latest:
+        return {
+            "is_online": False,
+            "status_text": "Components are off",
+            "offline_after_seconds": MACHINE_OFFLINE_AFTER_SECONDS,
+        }
+
+    recorded_at = parse_iso_datetime(latest.get("recorded_at"))
+    if not recorded_at:
+        return {
+            "is_online": False,
+            "status_text": "Components are off",
+            "offline_after_seconds": MACHINE_OFFLINE_AFTER_SECONDS,
+        }
+
+    is_online = (get_utc_now() - recorded_at) <= timedelta(seconds=MACHINE_OFFLINE_AFTER_SECONDS)
+    return {
+        "is_online": is_online,
+        "status_text": "Components are on" if is_online else "Components are off",
+        "offline_after_seconds": MACHINE_OFFLINE_AFTER_SECONDS,
+    }
+
+
+def get_machine_live_stream_url(machine_id):
+    """Return the configured live stream URL for one machine, if available."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+    if not normalized_machine_id:
+        return ""
+
+    saved_stream = get_machine_live_stream(normalized_machine_id)
+    if saved_stream and saved_stream.get("stream_url"):
+        return saved_stream["stream_url"].strip()
+
+    machine_specific_url = os.getenv(f"{normalized_machine_id.upper()}_LIVE_STREAM_URL", "").strip()
+    if machine_specific_url:
+        return machine_specific_url
+
+    return os.getenv("LIVE_STREAM_URL", "").strip()
+
+
 def is_valid_email(email):
     """Validate a basic email format before sending OTP or creating accounts."""
     return bool(EMAIL_PATTERN.fullmatch((email or "").strip()))
 
 
-def load_local_env():
-    """Load key=value pairs from a local .env file without extra packages."""
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
-
-    if not os.path.exists(env_path):
-        return
-
-    with open(env_path, "r", encoding="utf-8") as env_file:
-        for raw_line in env_file:
-            line = raw_line.strip()
-
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-
-            if key and key not in os.environ:
-                os.environ[key] = value
+def is_valid_http_url(value):
+    """Allow only public HTTP(S) stream URLs to be saved."""
+    return bool(re.fullmatch(r"https?://[^\s]+", (value or "").strip(), re.IGNORECASE))
 
 
 load_local_env()
 app = Flask(__name__, static_folder="frontend", static_url_path="")
 app.secret_key = os.getenv("FLASK_SECRET_KEY", os.getenv("JWT_SECRET", "change-this-secret-key"))
-
-DATABASE_PATH = os.path.join(os.path.dirname(__file__), "chatbot.db")
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 hardware_data = {}
 hardware_models = {}
@@ -115,11 +182,72 @@ def token_required(route_function):
         if not payload:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        request.user_id = payload["user_id"]
-        request.user_email = payload["email"]
+        user = find_user_by_id(payload["user_id"])
+        if not user:
+            return jsonify({"error": "User account not found."}), 401
+
+        if not user["is_active"]:
+            return jsonify({"error": "Your account is deactivated. Please contact the admin."}), 403
+
+        request.user_id = user["id"]
+        request.user_email = user["email"]
+        request.user_role = user["role"]
         return route_function(*args, **kwargs)
 
     return wrapper
+
+
+def admin_required(route_function):
+    """Allow only admin accounts to access the route."""
+
+    @token_required
+    @wraps(route_function)
+    def wrapper(*args, **kwargs):
+        if request.user_role != ROLE_ADMIN:
+            return jsonify({"error": "Admin access is required."}), 403
+
+        return route_function(*args, **kwargs)
+
+    return wrapper
+
+
+def operator_or_admin_required(route_function):
+    """Allow only admin or operator accounts to access the route."""
+
+    @token_required
+    @wraps(route_function)
+    def wrapper(*args, **kwargs):
+        if request.user_role not in {ROLE_ADMIN, ROLE_OPERATOR}:
+            return jsonify({"error": "Operator or admin access is required."}), 403
+
+        return route_function(*args, **kwargs)
+
+    return wrapper
+
+
+def get_signup_role_for_email(existing_user):
+    """Decide whether the incoming signup should become a user or complete an invited operator account."""
+    if not existing_user:
+        if count_users_by_role(ROLE_ADMIN) == 0:
+            return ROLE_ADMIN
+        return ROLE_USER
+
+    if existing_user["role"] == ROLE_OPERATOR and not existing_user["email_verified"]:
+        return ROLE_OPERATOR
+
+    return None
+
+
+def build_user_response(user):
+    """Return the frontend-safe user payload."""
+    return {
+        "id": user["id"],
+        "name": user["name"],
+        "email": user["email"],
+        "role": user["role"],
+        "is_active": bool(user["is_active"]),
+        "email_verified": bool(user["email_verified"]),
+    }
 
 
 def send_single_otp(email, purpose):
@@ -204,6 +332,22 @@ def get_selected_hardware_id():
     return hardware_ids[0] if hardware_ids else ""
 
 
+def get_public_signup_url():
+    """Build the signup URL used inside operator invitation emails."""
+    configured_base_url = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
+    if configured_base_url:
+        return f"{configured_base_url}/signup"
+
+    return f"{request.host_url.rstrip('/')}/signup"
+
+
+def build_display_name_from_email(email):
+    """Create a simple fallback display name from the email local part."""
+    local_part = (email or "").split("@", 1)[0].strip()
+    cleaned_name = re.sub(r"[^a-zA-Z0-9]+", " ", local_part).strip()
+    return cleaned_name[:80] or "Operator"
+
+
 @app.route("/")
 def home_page():
     return send_from_directory(app.static_folder, "login.html")
@@ -242,7 +386,9 @@ def request_signup_otp():
     if not is_valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
-    if find_user_by_email(email):
+    existing_user = find_user_by_email(email)
+    signup_role = get_signup_role_for_email(existing_user)
+    if not signup_role:
         return jsonify({"error": "User already exists."}), 409
 
     if was_otp_requested_recently(email, OTP_PURPOSE_SIGNUP):
@@ -271,22 +417,62 @@ def signup():
     if not is_valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
-    if find_user_by_email(email):
+    existing_user = find_user_by_email(email)
+    signup_role = get_signup_role_for_email(existing_user)
+    if not signup_role:
         return jsonify({"error": "User already exists."}), 409
 
     is_valid, error_message, otp_request = verify_otp_for_purpose(email, otp, OTP_PURPOSE_SIGNUP)
     if not is_valid:
         return jsonify({"error": error_message}), 400
 
-    user_id = create_user(name, email, get_password_hash(password))
+    if signup_role == ROLE_OPERATOR:
+        update_user_account_setup(existing_user["id"], name, get_password_hash(password), email_verified=True)
+        user = find_user_by_email(email)
+    else:
+        user_id = create_user(
+            name,
+            email,
+            get_password_hash(password),
+            role=signup_role,
+            is_active=True,
+            email_verified=True,
+        )
+        user = find_user_by_id(user_id)
+
     mark_otp_used(otp_request["id"])
 
     return jsonify(
         {
             "message": "Signup successful. Please login.",
-            "user": {"id": user_id, "name": name, "email": email},
+            "user": build_user_response(user),
         }
     )
+
+
+@app.route("/auth/verify-signup-otp", methods=["POST"])
+def verify_signup_otp():
+    """Verify signup OTP before allowing password creation."""
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    otp = data.get("otp", "").strip()
+
+    if not email or not otp:
+        return jsonify({"error": "Email and OTP are required."}), 400
+
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    existing_user = find_user_by_email(email)
+    signup_role = get_signup_role_for_email(existing_user)
+    if not signup_role:
+        return jsonify({"error": "User already exists."}), 409
+
+    is_valid, error_message, _ = verify_otp_for_purpose(email, otp, OTP_PURPOSE_SIGNUP)
+    if not is_valid:
+        return jsonify({"error": error_message}), 400
+
+    return jsonify({"message": "OTP verified. You can now create your password."})
 
 
 @app.route("/auth/login", methods=["POST"])
@@ -303,17 +489,19 @@ def login():
     if not user or not verify_password(password, user["password_hash"]):
         return jsonify({"error": "Invalid email or password."}), 401
 
-    token = create_token(user["id"], user["email"])
+    if user["role"] == ROLE_OPERATOR and not user["email_verified"]:
+        return jsonify({"error": "Complete your invited operator signup first."}), 403
+
+    if not user["is_active"]:
+        return jsonify({"error": "Your account is deactivated. Please contact the admin."}), 403
+
+    token = create_token(user["id"], user["email"], user["role"])
 
     return jsonify(
         {
             "message": "Login successful.",
             "token": token,
-            "user": {
-                "id": user["id"],
-                "name": user["name"],
-                "email": user["email"],
-            },
+            "user": build_user_response(user),
         }
     )
 
@@ -392,6 +580,184 @@ def reset_password():
     return jsonify({"message": "Password updated successfully. Please login."})
 
 
+@app.route("/admin/operators", methods=["GET"])
+@admin_required
+def list_operators():
+    """Return all operator accounts for the admin panel."""
+    current_admin = find_user_by_id(request.user_id)
+    return jsonify(
+        {
+            "current_admin": build_user_response(current_admin),
+            "operators": list_users_by_role(ROLE_OPERATOR),
+        }
+    )
+
+
+@app.route("/admin/operators", methods=["POST"])
+@admin_required
+def create_operator():
+    """Create or upgrade an operator account and notify the target email."""
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email is required."}), 400
+
+    if not is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    admin_user = find_user_by_id(request.user_id)
+    admin_name = admin_user["name"] if admin_user else "Admin"
+    placeholder_name = "Operator"
+    existing_user = find_user_by_email(email)
+    if existing_user:
+        if existing_user["role"] == ROLE_ADMIN:
+            return jsonify({"error": "Admin accounts cannot be converted into operators."}), 409
+
+        if existing_user["role"] == ROLE_OPERATOR:
+            if existing_user["email_verified"]:
+                promote_user_to_operator(existing_user["id"], request.user_id, email_verified=True, is_active=True)
+                updated_operator = find_user_by_id(existing_user["id"])
+                is_sent, email_message = send_operator_promotion_email(
+                    email,
+                    updated_operator["name"] or placeholder_name,
+                    admin_name,
+                )
+                if not is_sent:
+                    return jsonify({"error": email_message}), 500
+
+                return jsonify(
+                    {
+                        "message": "Existing operator access confirmed and notification email sent.",
+                        "operator": build_user_response(updated_operator),
+                    }
+                ), 200
+
+            signup_url = get_public_signup_url()
+            is_sent, email_message = send_operator_invite_email(
+                email,
+                existing_user["name"] or placeholder_name,
+                admin_name,
+                signup_url,
+            )
+            if not is_sent:
+                return jsonify({"error": email_message}), 500
+
+            return jsonify(
+                {
+                    "message": "Existing pending operator invitation email sent again.",
+                    "operator": build_user_response(existing_user),
+                }
+            ), 200
+
+        promote_user_to_operator(existing_user["id"], request.user_id, email_verified=True, is_active=True)
+        updated_operator = find_user_by_id(existing_user["id"])
+        is_sent, email_message = send_operator_promotion_email(
+            email,
+            updated_operator["name"] or placeholder_name,
+            admin_name,
+        )
+        if not is_sent:
+            return jsonify({"error": email_message}), 500
+
+        return jsonify(
+            {
+                "message": "Existing user promoted to operator successfully.",
+                "operator": build_user_response(updated_operator),
+            }
+        ), 200
+
+    temp_password_hash = get_password_hash(secrets.token_urlsafe(24))
+    operator_id = create_user(
+        placeholder_name,
+        email,
+        temp_password_hash,
+        role=ROLE_OPERATOR,
+        is_active=True,
+        email_verified=False,
+        created_by_user_id=request.user_id,
+    )
+    operator = find_user_by_id(operator_id)
+    signup_url = get_public_signup_url()
+    is_sent, email_message = send_operator_invite_email(
+        email,
+        placeholder_name,
+        admin_name,
+        signup_url,
+    )
+
+    if not is_sent:
+        delete_user_by_id(operator_id)
+        return jsonify({"error": email_message}), 500
+
+    return jsonify(
+        {
+            "message": "Operator invited successfully. Invitation email has been sent.",
+            "operator": build_user_response(operator),
+        }
+    ), 201
+
+
+@app.route("/admin/operators/<int:user_id>/status", methods=["PATCH"])
+@admin_required
+def update_operator_status_route(user_id):
+    """Activate an operator account or remove operator access."""
+    data = request.get_json() or {}
+
+    if "is_active" not in data:
+        return jsonify({"error": "is_active is required."}), 400
+
+    operator = find_user_by_id(user_id)
+    if not operator or operator["role"] != ROLE_OPERATOR:
+        return jsonify({"error": "Operator not found."}), 404
+
+    if not bool(data["is_active"]):
+        admin_user = find_user_by_id(request.user_id)
+        admin_name = admin_user["name"] if admin_user else "Admin"
+        update_user_role(user_id, ROLE_USER)
+        update_user_status(user_id, True)
+        updated_user = find_user_by_id(user_id)
+        is_sent, email_message = send_operator_removal_email(
+            updated_user["email"],
+            updated_user["name"] or "User",
+            admin_name,
+        )
+        if not is_sent:
+            return jsonify({"error": email_message}), 500
+
+        return jsonify(
+            {
+                "message": "Operator access removed successfully. The account is now a normal user.",
+                "operator": build_user_response(updated_user),
+            }
+        )
+
+    update_user_status(user_id, bool(data["is_active"]))
+    updated_operator = find_user_by_id(user_id)
+
+    return jsonify(
+        {
+            "message": "Operator status updated successfully.",
+            "operator": build_user_response(updated_operator),
+        }
+    )
+
+
+@app.route("/admin/operators/<int:user_id>", methods=["DELETE"])
+@admin_required
+def delete_operator_route(user_id):
+    """Delete an operator account only after it has been deactivated."""
+    operator = find_user_by_id(user_id)
+    if not operator or operator["role"] != ROLE_OPERATOR:
+        return jsonify({"error": "Operator not found."}), 404
+
+    if operator["is_active"]:
+        return jsonify({"error": "Deactivate the operator before deleting the account."}), 400
+
+    delete_user_by_id(user_id)
+    return jsonify({"message": "Operator deleted successfully."})
+
+
 @app.route("/hardware-list", methods=["GET"])
 @token_required
 def hardware_list():
@@ -421,6 +787,139 @@ def select_bot():
             "message": "Bot selected successfully.",
             "selected_bot": hardware_id,
             "selected_name": hardware_data[hardware_id]["name"],
+        }
+    )
+
+
+@app.route("/api/machine-stats/<machine_id>", methods=["GET"])
+@operator_or_admin_required
+def machine_stats(machine_id):
+    """Return the latest stored telemetry for one machine."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    latest = get_latest_machine_telemetry(normalized_machine_id)
+
+    return jsonify(
+        {
+            "machine_id": normalized_machine_id,
+            "machine_name": hardware_data[normalized_machine_id]["name"],
+            "has_data": bool(latest),
+            "stats": latest,
+            "status": build_machine_status(latest),
+        }
+    )
+
+
+@app.route("/api/machine-stats/<machine_id>/dashboard", methods=["GET"])
+@operator_or_admin_required
+def machine_stats_dashboard(machine_id):
+    """Return aggregated telemetry windows plus a short trend series for the dashboard."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    latest = get_latest_machine_telemetry(normalized_machine_id)
+    dashboard = get_machine_dashboard(normalized_machine_id)
+
+    return jsonify(
+        {
+            "machine_id": normalized_machine_id,
+            "machine_name": hardware_data[normalized_machine_id]["name"],
+            "has_data": bool(latest),
+            "latest": latest,
+            "status": build_machine_status(latest),
+            "summaries": dashboard["summaries"],
+            "trend": dashboard["trend"],
+        }
+    )
+
+
+@app.route("/api/machine-stats/<machine_id>/history", methods=["GET"])
+@operator_or_admin_required
+def machine_stats_history(machine_id):
+    """Return recent telemetry history for dashboards, ML prep, and exports."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    try:
+        limit = int(request.args.get("limit", 100))
+    except ValueError:
+        return jsonify({"error": "limit must be a number."}), 400
+
+    limit = max(1, min(limit, 1000))
+    history = list_machine_telemetry(normalized_machine_id, limit=limit)
+
+    return jsonify(
+        {
+            "machine_id": normalized_machine_id,
+            "machine_name": hardware_data[normalized_machine_id]["name"],
+            "count": len(history),
+            "history": history,
+        }
+    )
+
+
+@app.route("/api/machine-live/<machine_id>", methods=["GET"])
+@operator_or_admin_required
+def machine_live(machine_id):
+    """Return the configured remote live stream URL for one machine."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    stream_url = get_machine_live_stream_url(normalized_machine_id)
+
+    return jsonify(
+        {
+            "machine_id": normalized_machine_id,
+            "machine_name": hardware_data[normalized_machine_id]["name"],
+            "is_configured": bool(stream_url),
+            "stream_url": stream_url,
+        }
+    )
+
+
+@app.route("/api/machine-live/<machine_id>/url", methods=["POST"])
+def update_machine_live_url(machine_id):
+    """Allow a Raspberry Pi boot script to publish its current tunnel URL."""
+    update_token = os.getenv("MACHINE_LIVE_UPDATE_TOKEN", "").strip()
+    request_token = request.headers.get("X-Live-Update-Token", "").strip()
+
+    if not update_token:
+        return jsonify({"error": "Live stream update token is not configured."}), 503
+
+    if not secrets.compare_digest(update_token, request_token):
+        return jsonify({"error": "Invalid live stream update token."}), 401
+
+    normalized_machine_id = (machine_id or "").strip().lower()
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    data = request.get_json() or {}
+    stream_url = data.get("stream_url", "").strip()
+
+    if not is_valid_http_url(stream_url):
+        return jsonify({"error": "A valid http or https stream_url is required."}), 400
+
+    saved_stream = upsert_machine_live_stream(
+        normalized_machine_id,
+        stream_url,
+        source=data.get("source", "raspberry_pi"),
+    )
+
+    return jsonify(
+        {
+            "message": "Live stream URL updated successfully.",
+            "machine_id": normalized_machine_id,
+            "machine_name": hardware_data[normalized_machine_id]["name"],
+            "stream": saved_stream,
         }
     )
 
@@ -489,11 +988,11 @@ def chat():
 
 
 if __name__ == "__main__":
-    init_db(DATABASE_PATH)
+    init_db()
     create_tables()
     load_app_data()
     app.run(host="0.0.0.0", port=5000, debug=True)
 else:
-    init_db(DATABASE_PATH)
+    init_db()
     create_tables()
     load_app_data()

@@ -23,6 +23,49 @@ const profileMenuButton = document.getElementById("profile-menu-button");
 const profileMenuPanel = document.getElementById("profile-menu-panel");
 const profileAvatarText = document.getElementById("profile-avatar-text");
 const currentUserEmail = document.getElementById("current-user-email");
+const currentUserRole = document.getElementById("current-user-role");
+const openMachineStatsButton = document.getElementById("open-machine-stats");
+const openLiveMachineButton = document.getElementById("open-live-machine");
+const machineStatsModal = document.getElementById("machine-stats-modal");
+const machineStatsModalBackdrop = document.getElementById("machine-stats-modal-backdrop");
+const closeMachineStatsButton = document.getElementById("close-machine-stats");
+const liveMachineModal = document.getElementById("live-machine-modal");
+const liveMachineModalBackdrop = document.getElementById("live-machine-modal-backdrop");
+const closeLiveMachineButton = document.getElementById("close-live-machine");
+const machineMetricsSection = document.getElementById("machine-metrics-section");
+const machineStatsMachineName = document.getElementById("machine-stats-machine-name");
+const machineStatsStatus = document.getElementById("machine-stats-status");
+const machineStatsRangeTabs = document.getElementById("machine-stats-range-tabs");
+const machineStatsRangeLabel = document.getElementById("machine-stats-range-label");
+const machineStatsReadingCount = document.getElementById("machine-stats-reading-count");
+const machineStatsLastUpdated = document.getElementById("machine-stats-last-updated");
+const machineTrendBars = document.getElementById("machine-trend-bars");
+const machineTrendTotal = document.getElementById("machine-trend-total");
+const machineMetricTemperature = document.getElementById("machine-metric-temperature");
+const machineMetricTemperatureMeta = document.getElementById("machine-metric-temperature-meta");
+const machineMetricHumidity = document.getElementById("machine-metric-humidity");
+const machineMetricHumidityMeta = document.getElementById("machine-metric-humidity-meta");
+const machineMetricVibration = document.getElementById("machine-metric-vibration");
+const machineMetricVibrationMeta = document.getElementById("machine-metric-vibration-meta");
+const machineLiveSection = document.getElementById("machine-live-section");
+const machineLiveTitle = document.getElementById("machine-live-title");
+const machineLiveStatus = document.getElementById("machine-live-status");
+const machineLiveFrame = document.getElementById("machine-live-frame");
+const machineLiveImage = document.getElementById("machine-live-image");
+const startLiveMachineButton = document.getElementById("start-live-machine");
+const stopLiveMachineButton = document.getElementById("stop-live-machine");
+const openOperatorPanelButton = document.getElementById("open-operator-panel");
+const operatorModal = document.getElementById("operator-modal");
+const operatorModalBackdrop = document.getElementById("operator-modal-backdrop");
+const closeOperatorPanelButton = document.getElementById("close-operator-panel");
+const operatorCreateForm = document.getElementById("operator-create-form");
+const operatorList = document.getElementById("operator-list");
+const operatorPanelMessage = document.getElementById("operator-panel-message");
+const operatorAdminName = document.getElementById("operator-admin-name");
+const operatorAdminEmail = document.getElementById("operator-admin-email");
+const operatorTotalCount = document.getElementById("operator-total-count");
+const operatorActiveCount = document.getElementById("operator-active-count");
+const operatorPendingCount = document.getElementById("operator-pending-count");
 const sidebarElement = document.getElementById("chat-sidebar");
 const sidebarOverlay = document.getElementById("sidebar-overlay");
 const sidebarToggleButton = document.getElementById("sidebar-toggle");
@@ -32,6 +75,8 @@ let currentBotId = "";
 let hardwareMap = {};
 let lastUserMessage = "";
 let requestedBotId = "";
+let machineStatsPollHandle = null;
+let selectedMachineStatsRange = "last_1_minute";
 
 function applyVersionLabel() {
     const versionLabel = window.ECE_BOT_UI_CONFIG?.versionLabel?.trim();
@@ -42,6 +87,88 @@ function applyVersionLabel() {
     document.querySelectorAll("[data-app-version]").forEach((element) => {
         element.textContent = versionLabel;
     });
+}
+
+function isAdminUser() {
+    return savedUser?.role === "admin";
+}
+
+function isOperatorUser() {
+    return savedUser?.role === "operator" || savedUser?.role === "admin";
+}
+
+function showOperatorMessage(text, isError = true) {
+    if (!operatorPanelMessage) {
+        return;
+    }
+
+    operatorPanelMessage.textContent = text;
+    operatorPanelMessage.style.color = isError ? "#f97066" : "#6ce9a6";
+}
+
+function setOperatorModalState(isOpen) {
+    if (!operatorModal) {
+        return;
+    }
+
+    operatorModal.classList.toggle("hidden-block", !isOpen);
+    operatorModal.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    updateModalBodyLock();
+}
+
+function setMachineStatsModalState(isOpen) {
+    if (!machineStatsModal) {
+        return;
+    }
+
+    machineStatsModal.classList.toggle("hidden-block", !isOpen);
+    machineStatsModal.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    updateModalBodyLock();
+}
+
+function setLiveMachineModalState(isOpen) {
+    if (!liveMachineModal) {
+        return;
+    }
+
+    liveMachineModal.classList.toggle("hidden-block", !isOpen);
+    liveMachineModal.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    updateModalBodyLock();
+}
+
+function updateModalBodyLock() {
+    const hasOpenModal = [operatorModal, machineStatsModal, liveMachineModal].some(
+        (modal) => modal && !modal.classList.contains("hidden-block")
+    );
+    document.body.classList.toggle("operator-modal-open", hasOpenModal);
+}
+
+function renderOperatorAdmin(admin) {
+    if (operatorAdminName) {
+        operatorAdminName.textContent = admin?.name || savedUser?.name || "Admin";
+    }
+
+    if (operatorAdminEmail) {
+        operatorAdminEmail.textContent = admin?.email || savedUser?.email || "";
+    }
+}
+
+function renderOperatorStats(operators = []) {
+    const total = operators.length;
+    const active = operators.filter((item) => item.is_active).length;
+    const pending = operators.filter((item) => !item.email_verified).length;
+
+    if (operatorTotalCount) {
+        operatorTotalCount.textContent = String(total);
+    }
+
+    if (operatorActiveCount) {
+        operatorActiveCount.textContent = String(active);
+    }
+
+    if (operatorPendingCount) {
+        operatorPendingCount.textContent = String(pending);
+    }
 }
 
 // ADDED
@@ -82,6 +209,463 @@ if (savedUser) {
     if (currentUserEmail) {
         currentUserEmail.textContent = emailText;
     }
+
+    if (currentUserRole && savedUser.role) {
+        currentUserRole.textContent = `Role: ${savedUser.role.charAt(0).toUpperCase()}${savedUser.role.slice(1)}`;
+        currentUserRole.classList.remove("hidden-block");
+    }
+}
+
+resetMachineLiveView();
+
+function renderMachineMetrics() {
+    if (!machineMetricsSection) {
+        return;
+    }
+
+    if (!isOperatorUser()) {
+        machineMetricsSection.classList.add("hidden-block");
+        return;
+    }
+
+    machineMetricsSection.classList.remove("hidden-block");
+
+    if (machineMetricTemperature) {
+        machineMetricTemperature.textContent = "--";
+    }
+
+    if (machineMetricTemperatureMeta) {
+        machineMetricTemperatureMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
+    }
+
+    if (machineMetricHumidity) {
+        machineMetricHumidity.textContent = "--";
+    }
+
+    if (machineMetricHumidityMeta) {
+        machineMetricHumidityMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
+    }
+
+    if (machineMetricVibration) {
+        machineMetricVibration.textContent = "--";
+    }
+
+    if (machineMetricVibrationMeta) {
+        machineMetricVibrationMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
+    }
+
+    if (machineStatsMachineName) {
+        machineStatsMachineName.textContent = hardwareMap[currentBotId]?.name || "--";
+    }
+
+    if (machineStatsStatus) {
+        machineStatsStatus.textContent = "Components are off";
+        machineStatsStatus.classList.remove("is-on");
+        machineStatsStatus.classList.add("is-off");
+    }
+
+    if (machineStatsRangeLabel) {
+        machineStatsRangeLabel.textContent = getMachineRangeLabel(selectedMachineStatsRange);
+    }
+
+    if (machineStatsReadingCount) {
+        machineStatsReadingCount.textContent = "0 readings";
+    }
+
+    if (machineStatsLastUpdated) {
+        machineStatsLastUpdated.textContent = "No telemetry yet";
+    }
+
+    renderMachineTrendChart();
+}
+
+function formatMachineMetricValue(value, suffix) {
+    if (value === null || value === undefined || value === "") {
+        return "--";
+    }
+
+    const numberValue = Number(value);
+    if (Number.isNaN(numberValue)) {
+        return "--";
+    }
+
+    return `${numberValue.toFixed(2)} ${suffix}`;
+}
+
+function formatMachineMetricPlain(value, suffix) {
+    if (value === null || value === undefined || value === "") {
+        return "--";
+    }
+
+    const numberValue = Number(value);
+    if (Number.isNaN(numberValue)) {
+        return "--";
+    }
+
+    return `${numberValue.toFixed(2)}${suffix}`;
+}
+
+function formatMachineStatsTimestamp(value) {
+    if (!value) {
+        return "No telemetry yet";
+    }
+
+    const dateValue = new Date(value);
+    if (Number.isNaN(dateValue.getTime())) {
+        return "No telemetry yet";
+    }
+
+    return `Last update ${dateValue.toLocaleString()}`;
+}
+
+function getMachineRangeLabel(rangeKey) {
+    const labels = {
+        last_1_minute: "Last 1 minute",
+        last_1_hour: "Last 1 hour",
+        today: "Today",
+        yesterday: "Yesterday"
+    };
+
+    return labels[rangeKey] || "Last 1 minute";
+}
+
+function renderMachineTrendChart(summaries = {}) {
+    if (!machineTrendBars) {
+        return;
+    }
+
+    const ranges = [
+        ["last_1_minute", "1 Min"],
+        ["last_1_hour", "1H"],
+        ["today", "Today"],
+        ["yesterday", "Yesterday"]
+    ];
+    const values = ranges.map(([key]) => Number(summaries?.[key]?.reading_count || 0));
+    const maxValue = Math.max(...values, 1);
+    const totalValue = values.reduce((sum, value) => sum + value, 0);
+
+    machineTrendBars.innerHTML = "";
+
+    ranges.forEach(([key, label], index) => {
+        const value = values[index];
+        const barItem = document.createElement("div");
+        barItem.className = "machine-trend-bar-item";
+        barItem.classList.toggle("is-selected", key === selectedMachineStatsRange);
+
+        const valueElement = document.createElement("span");
+        valueElement.className = "machine-trend-value";
+        valueElement.textContent = String(value);
+
+        const barTrack = document.createElement("div");
+        barTrack.className = "machine-trend-bar-track";
+
+        const barFill = document.createElement("div");
+        barFill.className = "machine-trend-bar-fill";
+        barFill.style.height = `${Math.max(8, (value / maxValue) * 100)}%`;
+        barTrack.appendChild(barFill);
+
+        const labelElement = document.createElement("span");
+        labelElement.className = "machine-trend-label";
+        labelElement.textContent = label;
+
+        barItem.appendChild(valueElement);
+        barItem.appendChild(barTrack);
+        barItem.appendChild(labelElement);
+        machineTrendBars.appendChild(barItem);
+    });
+
+    if (machineTrendTotal) {
+        machineTrendTotal.textContent = `${totalValue} ${totalValue === 1 ? "total reading" : "total readings"}`;
+    }
+}
+
+function renderMachineRangeTabs() {
+    if (!machineStatsRangeTabs) {
+        return;
+    }
+
+    machineStatsRangeTabs.querySelectorAll(".machine-range-tab").forEach((button) => {
+        button.classList.toggle("is-selected", button.dataset.range === selectedMachineStatsRange);
+    });
+}
+
+function buildMachineMetaText(summary, avgKey, minKey, maxKey, suffix) {
+    return `
+        <span>Avg ${formatMachineMetricPlain(summary?.[avgKey], suffix)}</span>
+        <span>Min ${formatMachineMetricPlain(summary?.[minKey], suffix)}</span>
+        <span>Max ${formatMachineMetricPlain(summary?.[maxKey], suffix)}</span>
+    `;
+}
+
+function renderMachineMetricsFromStats(latestStats, summary) {
+    if (machineMetricTemperature) {
+        machineMetricTemperature.textContent = formatMachineMetricValue(latestStats?.temperature, "C");
+    }
+
+    if (machineMetricTemperatureMeta) {
+        machineMetricTemperatureMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_temperature",
+            "min_temperature",
+            "max_temperature",
+            "C"
+        );
+    }
+
+    if (machineMetricHumidity) {
+        machineMetricHumidity.textContent = formatMachineMetricValue(latestStats?.humidity, "%");
+    }
+
+    if (machineMetricHumidityMeta) {
+        machineMetricHumidityMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_humidity",
+            "min_humidity",
+            "max_humidity",
+            "%"
+        );
+    }
+
+    if (machineMetricVibration) {
+        machineMetricVibration.textContent = formatMachineMetricValue(latestStats?.vibration, "g");
+    }
+
+    if (machineMetricVibrationMeta) {
+        machineMetricVibrationMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_vibration",
+            "min_vibration",
+            "max_vibration",
+            "g"
+        );
+    }
+
+    if (machineStatsRangeLabel) {
+        machineStatsRangeLabel.textContent = getMachineRangeLabel(selectedMachineStatsRange);
+    }
+
+    if (machineStatsReadingCount) {
+        const readingCount = Number(summary?.reading_count || 0);
+        machineStatsReadingCount.textContent = `${readingCount} ${readingCount === 1 ? "reading" : "readings"}`;
+    }
+
+    if (machineStatsLastUpdated) {
+        machineStatsLastUpdated.textContent = formatMachineStatsTimestamp(
+            latestStats?.recorded_at || summary?.latest_recorded_at
+        );
+    }
+}
+
+function renderMachineStatus(status) {
+    if (!machineStatsStatus) {
+        return;
+    }
+
+    const isOnline = Boolean(status?.is_online);
+    machineStatsStatus.textContent = status?.status_text || (isOnline ? "Components are on" : "Components are off");
+    machineStatsStatus.classList.toggle("is-on", isOnline);
+    machineStatsStatus.classList.toggle("is-off", !isOnline);
+}
+
+function renderMachineOfflineState(summary) {
+    if (machineMetricTemperature) {
+        machineMetricTemperature.textContent = "--";
+    }
+
+    if (machineMetricHumidity) {
+        machineMetricHumidity.textContent = "--";
+    }
+
+    if (machineMetricVibration) {
+        machineMetricVibration.textContent = "--";
+    }
+
+    if (machineMetricTemperatureMeta) {
+        machineMetricTemperatureMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_temperature",
+            "min_temperature",
+            "max_temperature",
+            "C"
+        );
+    }
+
+    if (machineMetricHumidityMeta) {
+        machineMetricHumidityMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_humidity",
+            "min_humidity",
+            "max_humidity",
+            "%"
+        );
+    }
+
+    if (machineMetricVibrationMeta) {
+        machineMetricVibrationMeta.innerHTML = buildMachineMetaText(
+            summary,
+            "avg_vibration",
+            "min_vibration",
+            "max_vibration",
+            "g"
+        );
+    }
+
+    if (machineStatsRangeLabel) {
+        machineStatsRangeLabel.textContent = getMachineRangeLabel(selectedMachineStatsRange);
+    }
+
+    if (machineStatsReadingCount) {
+        const readingCount = Number(summary?.reading_count || 0);
+        machineStatsReadingCount.textContent = `${readingCount} ${readingCount === 1 ? "reading" : "readings"}`;
+    }
+
+    if (machineStatsLastUpdated) {
+        machineStatsLastUpdated.textContent = "Components are off";
+    }
+}
+
+function stopMachineStatsPolling() {
+    if (machineStatsPollHandle) {
+        clearInterval(machineStatsPollHandle);
+        machineStatsPollHandle = null;
+    }
+}
+
+function setMachineLiveStatus(text, isError = false) {
+    if (!machineLiveStatus) {
+        return;
+    }
+
+    machineLiveStatus.textContent = text;
+    machineLiveStatus.classList.toggle("is-error", isError);
+}
+
+function setMachineLiveLoading(isLoading) {
+    if (startLiveMachineButton) {
+        startLiveMachineButton.disabled = isLoading;
+        startLiveMachineButton.textContent = isLoading ? "Starting..." : "Start Live";
+    }
+}
+
+function resetMachineLiveView() {
+    if (machineLiveTitle) {
+        machineLiveTitle.textContent = `${hardwareMap[currentBotId]?.name || "Machine"} camera feed`;
+    }
+
+    if (machineLiveImage) {
+        machineLiveImage.removeAttribute("src");
+    }
+
+    if (machineLiveFrame) {
+        machineLiveFrame.classList.remove("is-active");
+    }
+
+    setMachineLiveLoading(false);
+    setMachineLiveStatus("Live stream is stopped.");
+}
+
+function stopMachineLiveStream() {
+    resetMachineLiveView();
+}
+
+function addStreamCacheBuster(streamUrl) {
+    const separator = streamUrl.includes("?") ? "&" : "?";
+    return `${streamUrl}${separator}t=${Date.now()}`;
+}
+
+async function startMachineLiveStream() {
+    if (!isOperatorUser() || !currentBotId) {
+        setMachineLiveStatus("Select a machine before starting the live stream.", true);
+        return;
+    }
+
+    setMachineLiveLoading(true);
+    setMachineLiveStatus("Connecting to live stream...");
+
+    try {
+        const response = await fetch(`/api/machine-live/${encodeURIComponent(currentBotId)}`, {
+            headers: getAuthHeaders()
+        });
+        const data = await readJson(response);
+
+        if (!response.ok) {
+            setMachineLiveStatus(data.error || "Unable to load live stream.", true);
+            return;
+        }
+
+        if (machineLiveTitle) {
+            machineLiveTitle.textContent = `${data.machine_name || hardwareMap[currentBotId]?.name || "Machine"} camera feed`;
+        }
+
+        if (!data.is_configured || !data.stream_url) {
+            setMachineLiveStatus("Live stream URL is not configured for this machine.", true);
+            return;
+        }
+
+        if (machineLiveImage) {
+            machineLiveImage.src = addStreamCacheBuster(data.stream_url);
+        }
+
+        if (machineLiveFrame) {
+            machineLiveFrame.classList.add("is-active");
+        }
+
+        setMachineLiveStatus("Live stream is running.");
+    } catch (error) {
+        setMachineLiveStatus("Unable to connect to live stream right now.", true);
+    } finally {
+        setMachineLiveLoading(false);
+    }
+}
+
+async function loadMachineStats() {
+    if (!isOperatorUser() || !currentBotId) {
+        renderMachineMetrics();
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/machine-stats/${encodeURIComponent(currentBotId)}/dashboard`, {
+            headers: getAuthHeaders()
+        });
+        const data = await readJson(response);
+
+        if (machineStatsMachineName) {
+            machineStatsMachineName.textContent = data.machine_name || hardwareMap[currentBotId]?.name || "--";
+        }
+
+        renderMachineRangeTabs();
+        renderMachineStatus(data.status);
+        renderMachineTrendChart(data.summaries || {});
+
+        if (!response.ok || !data.has_data) {
+            renderMachineMetricsFromStats(
+                data.latest || {},
+                data.summaries?.[selectedMachineStatsRange] || {}
+            );
+            return;
+        }
+
+        if (!data.status?.is_online) {
+            renderMachineOfflineState(
+                data.summaries?.[selectedMachineStatsRange] || {}
+            );
+            return;
+        }
+
+        renderMachineMetricsFromStats(
+            data.latest || {},
+            data.summaries?.[selectedMachineStatsRange] || {}
+        );
+    } catch (error) {
+        renderMachineMetrics();
+    }
+}
+
+function startMachineStatsPolling() {
+    stopMachineStatsPolling();
+    loadMachineStats();
+    machineStatsPollHandle = setInterval(loadMachineStats, 4000);
 }
 
 function readRequestedBotId() {
@@ -384,6 +968,128 @@ function renderSuggestions() {
     suggestionBox.style.display = suggestions.length ? "flex" : "none";
 }
 
+function formatRoleStatus(operator) {
+    const verificationLabel = operator.email_verified ? "Verified" : "Pending signup";
+    const activeLabel = operator.is_active ? "Active" : "Inactive";
+    return `${verificationLabel} | ${activeLabel}`;
+}
+
+function getOperatorStatusBadge(operator) {
+    if (!operator.email_verified) {
+        return { label: "Pending Signup", className: "status-pending" };
+    }
+
+    if (!operator.is_active) {
+        return { label: "Inactive", className: "status-inactive" };
+    }
+
+    return { label: "Active", className: "status-active" };
+}
+
+function renderOperatorList(operators = []) {
+    if (!operatorList) {
+        return;
+    }
+
+    operatorList.innerHTML = "";
+
+    if (!operators.length) {
+        const emptyState = document.createElement("p");
+        emptyState.className = "page-text";
+        emptyState.textContent = "No operators in this list.";
+        operatorList.appendChild(emptyState);
+        return;
+    }
+
+    operators.forEach((operator) => {
+        const card = document.createElement("article");
+        card.className = "operator-item";
+        const status = getOperatorStatusBadge(operator);
+
+        const info = document.createElement("div");
+        info.className = "operator-item-info";
+        info.innerHTML = `
+            <div class="operator-item-topline">
+                <strong>${operator.name}</strong>
+                <span class="operator-status-badge ${status.className}">${status.label}</span>
+            </div>
+            <span>${operator.email}</span>
+            <small>${formatRoleStatus(operator)}</small>
+        `;
+
+        const toggleButton = document.createElement("button");
+        toggleButton.type = "button";
+        toggleButton.className = operator.is_active ? "ghost-button operator-action-button" : "secondary-button operator-action-button";
+        toggleButton.textContent = operator.is_active ? "Remove" : "Activate";
+        toggleButton.addEventListener("click", async () => {
+            if (operator.is_active) {
+                const isConfirmed = window.confirm(
+                    `Remove operator access for ${operator.name}? Their account will stay active as a normal user.`
+                );
+                if (!isConfirmed) {
+                    return;
+                }
+            }
+
+            toggleButton.disabled = true;
+            showOperatorMessage("");
+
+            try {
+                const response = await fetch(`/admin/operators/${operator.id}/status`, {
+                    method: "PATCH",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ is_active: !operator.is_active })
+                });
+                const data = await readJson(response);
+
+                if (!response.ok) {
+                    showOperatorMessage(data.error || "Unable to update operator access.");
+                    toggleButton.disabled = false;
+                    return;
+                }
+
+                showOperatorMessage(data.message || "Operator updated successfully.", false);
+                await loadOperators();
+            } catch (error) {
+                showOperatorMessage("Unable to update operator access right now.");
+                toggleButton.disabled = false;
+            }
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "operator-item-actions";
+        actions.appendChild(toggleButton);
+        card.appendChild(info);
+        card.appendChild(actions);
+        operatorList.appendChild(card);
+    });
+}
+
+async function loadOperators() {
+    if (!isAdminUser()) {
+        return;
+    }
+
+    const response = await fetch("/admin/operators", {
+        headers: getAuthHeaders()
+    });
+
+    if (response.status === 401) {
+        logout();
+        return;
+    }
+
+    const data = await readJson(response);
+    if (!response.ok) {
+        showOperatorMessage(data.error || "Unable to load operators.");
+        return;
+    }
+
+    renderOperatorAdmin(data.current_admin);
+    renderOperatorStats(data.operators || []);
+    renderOperatorList(data.operators || []);
+}
+
 function renderBotMenuOptions() {
     if (!botSelectMenu) {
         return;
@@ -481,6 +1187,12 @@ async function saveSelectedBot(hardwareId) {
     currentBotId = hardwareId;
     updateBotSelectionUi();
     renderSuggestions();
+    stopMachineLiveStream();
+
+    if (machineStatsModal && !machineStatsModal.classList.contains("hidden-block")) {
+        startMachineStatsPolling();
+    }
+
     return true;
 }
 
@@ -755,6 +1467,151 @@ function logout() {
     window.location.href = "/";
 }
 
+if (openOperatorPanelButton && operatorModal) {
+    if (isAdminUser()) {
+        openOperatorPanelButton.classList.remove("hidden-block");
+    }
+
+    openOperatorPanelButton.addEventListener("click", async () => {
+        setOperatorModalState(true);
+        setProfileMenuState(false);
+        showOperatorMessage("");
+        await loadOperators();
+    });
+}
+
+if (openMachineStatsButton && machineStatsModal && isOperatorUser()) {
+    openMachineStatsButton.classList.remove("hidden-block");
+    openMachineStatsButton.addEventListener("click", () => {
+        setMachineStatsModalState(true);
+        setProfileMenuState(false);
+        renderMachineRangeTabs();
+        renderMachineMetrics();
+        startMachineStatsPolling();
+    });
+}
+
+if (openLiveMachineButton && liveMachineModal && isOperatorUser()) {
+    openLiveMachineButton.classList.remove("hidden-block");
+    openLiveMachineButton.addEventListener("click", () => {
+        setLiveMachineModalState(true);
+        setProfileMenuState(false);
+        resetMachineLiveView();
+        startMachineLiveStream();
+    });
+}
+
+if (startLiveMachineButton) {
+    startLiveMachineButton.addEventListener("click", startMachineLiveStream);
+}
+
+if (stopLiveMachineButton) {
+    stopLiveMachineButton.addEventListener("click", stopMachineLiveStream);
+}
+
+if (machineLiveImage) {
+    machineLiveImage.addEventListener("error", () => {
+        setMachineLiveStatus("Live stream could not be loaded. Check the Raspberry Pi stream URL.", true);
+        machineLiveFrame?.classList.remove("is-active");
+    });
+}
+
+if (machineStatsRangeTabs) {
+    machineStatsRangeTabs.addEventListener("click", (event) => {
+        const rangeButton = event.target.closest(".machine-range-tab");
+        if (!rangeButton) {
+            return;
+        }
+
+        selectedMachineStatsRange = rangeButton.dataset.range || "last_1_hour";
+        renderMachineRangeTabs();
+        machineTrendBars?.querySelectorAll(".machine-trend-bar-item").forEach((item, index) => {
+            const rangeKeys = ["last_1_minute", "last_1_hour", "today", "yesterday"];
+            item.classList.toggle("is-selected", rangeKeys[index] === selectedMachineStatsRange);
+        });
+        loadMachineStats();
+    });
+}
+
+if (closeOperatorPanelButton && operatorModal) {
+    closeOperatorPanelButton.addEventListener("click", () => {
+        setOperatorModalState(false);
+        showOperatorMessage("");
+    });
+}
+
+if (operatorModalBackdrop) {
+    operatorModalBackdrop.addEventListener("click", () => {
+        setOperatorModalState(false);
+        showOperatorMessage("");
+    });
+}
+
+if (closeMachineStatsButton && machineStatsModal) {
+    closeMachineStatsButton.addEventListener("click", () => {
+        setMachineStatsModalState(false);
+        stopMachineStatsPolling();
+    });
+}
+
+if (machineStatsModalBackdrop) {
+    machineStatsModalBackdrop.addEventListener("click", () => {
+        setMachineStatsModalState(false);
+        stopMachineStatsPolling();
+    });
+}
+
+if (closeLiveMachineButton && liveMachineModal) {
+    closeLiveMachineButton.addEventListener("click", () => {
+        setLiveMachineModalState(false);
+        stopMachineLiveStream();
+    });
+}
+
+if (liveMachineModalBackdrop) {
+    liveMachineModalBackdrop.addEventListener("click", () => {
+        setLiveMachineModalState(false);
+        stopMachineLiveStream();
+    });
+}
+
+if (operatorCreateForm) {
+    operatorCreateForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const payload = {
+            email: document.getElementById("operator-email").value.trim()
+        };
+
+        if (!payload.email) {
+            showOperatorMessage("Operator email is required.");
+            return;
+        }
+
+        showOperatorMessage("");
+
+        try {
+            const response = await fetch("/admin/operators", {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify(payload)
+            });
+            const data = await readJson(response);
+
+            if (!response.ok) {
+                showOperatorMessage(data.error || "Unable to create operator.");
+                return;
+            }
+
+            showOperatorMessage(data.message || "Operator created successfully.", false);
+            operatorCreateForm.reset();
+            await loadOperators();
+        } catch (error) {
+            showOperatorMessage("Unable to create operator right now.");
+        }
+    });
+}
+
 // ADDED
 themeToggle.addEventListener("change", () => {
     applyTheme(themeToggle.checked ? "light" : "dark");
@@ -790,6 +1647,17 @@ if (profileMenuButton && profileMenuPanel) {
         setBotMenuState(false);
     });
 }
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+        setOperatorModalState(false);
+        setMachineStatsModalState(false);
+        setLiveMachineModalState(false);
+        stopMachineStatsPolling();
+        stopMachineLiveStream();
+        showOperatorMessage("");
+    }
+});
 
 if (botSelectButton && botSelectMenu) {
     botSelectButton.addEventListener("click", (event) => {
@@ -841,8 +1709,12 @@ logoutButton.addEventListener("click", logout);
 async function initializePage() {
     applyVersionLabel();
     applyTheme(localStorage.getItem("theme") || "dark");
+    renderMachineMetrics();
     autoResizeTextarea();
     updateChatEmptyState();
+    if (isAdminUser()) {
+        await loadOperators();
+    }
     await loadBots();
     await applyRequestedBotSelection();
     await loadChatSessions();
