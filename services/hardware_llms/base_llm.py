@@ -30,7 +30,7 @@ def build_provider_error_message(response, model_name):
         return f'The configured AI model "{model_name}" does not support text generation.'
 
     if response.status_code == 403 and "unregistered callers" in lowered_message:
-        return "The Google AI API key is being rejected by the server. Please check the key restrictions or regenerate the API key."
+        return "The LLM API key is being rejected by the server. Please check the key restrictions or regenerate the API key."
 
     if response.status_code == 403:
         return "The AI service is not allowed to use this Google model right now. Please check the API key permissions."
@@ -42,7 +42,7 @@ def build_provider_error_message(response, model_name):
         return "The AI service is busy right now. Please wait a moment and try again."
 
     if provider_message:
-        return f"Google AI error: {provider_message}"
+        return f"LLM error: {provider_message}"
 
     return default_message
 

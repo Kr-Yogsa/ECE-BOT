@@ -542,8 +542,6 @@ def update_user_role(user_id, role):
     db.commit()
     db.close()
     return True
-
-
 def promote_user_to_operator(user_id, created_by_user_id=None, email_verified=True, is_active=True):
     """Promote an existing account to operator access and keep it usable immediately."""
     db = get_session()

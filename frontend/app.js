@@ -77,6 +77,10 @@ let lastUserMessage = "";
 let requestedBotId = "";
 let machineStatsPollHandle = null;
 let selectedMachineStatsRange = "last_1_minute";
+let isCreatingOperatorRequestPending = false;
+const pendingOperatorStatusRequests = new Set();
+const SESSION_HEARTBEAT_INTERVAL_MS = 60000;
+let sessionHeartbeatHandle = null;
 
 function applyVersionLabel() {
     const versionLabel = window.ECE_BOT_UI_CONFIG?.versionLabel?.trim();
@@ -104,6 +108,15 @@ function showOperatorMessage(text, isError = true) {
 
     operatorPanelMessage.textContent = text;
     operatorPanelMessage.style.color = isError ? "#f97066" : "#6ce9a6";
+}
+
+function setOperatorButtonPendingState(button, isPending, idleLabel, pendingLabel) {
+    if (!button) {
+        return;
+    }
+
+    button.disabled = isPending;
+    button.textContent = isPending ? pendingLabel : idleLabel;
 }
 
 function setOperatorModalState(isOpen) {
@@ -1020,8 +1033,15 @@ function renderOperatorList(operators = []) {
         const toggleButton = document.createElement("button");
         toggleButton.type = "button";
         toggleButton.className = operator.is_active ? "ghost-button operator-action-button" : "secondary-button operator-action-button";
-        toggleButton.textContent = operator.is_active ? "Remove" : "Activate";
+        const idleLabel = operator.is_active ? "Remove" : "Activate";
+        const pendingLabel = operator.is_active ? "Removing..." : "Activating...";
+        const isPending = pendingOperatorStatusRequests.has(operator.id);
+        setOperatorButtonPendingState(toggleButton, isPending, idleLabel, pendingLabel);
         toggleButton.addEventListener("click", async () => {
+            if (pendingOperatorStatusRequests.has(operator.id)) {
+                return;
+            }
+
             if (operator.is_active) {
                 const isConfirmed = window.confirm(
                     `Remove operator access for ${operator.name}? Their account will stay active as a normal user.`
@@ -1031,7 +1051,8 @@ function renderOperatorList(operators = []) {
                 }
             }
 
-            toggleButton.disabled = true;
+            pendingOperatorStatusRequests.add(operator.id);
+            setOperatorButtonPendingState(toggleButton, true, idleLabel, pendingLabel);
             showOperatorMessage("");
 
             try {
@@ -1044,15 +1065,17 @@ function renderOperatorList(operators = []) {
 
                 if (!response.ok) {
                     showOperatorMessage(data.error || "Unable to update operator access.");
-                    toggleButton.disabled = false;
                     return;
                 }
 
                 showOperatorMessage(data.message || "Operator updated successfully.", false);
+                pendingOperatorStatusRequests.delete(operator.id);
                 await loadOperators();
             } catch (error) {
                 showOperatorMessage("Unable to update operator access right now.");
-                toggleButton.disabled = false;
+            } finally {
+                pendingOperatorStatusRequests.delete(operator.id);
+                setOperatorButtonPendingState(toggleButton, false, idleLabel, pendingLabel);
             }
         });
 
@@ -1462,9 +1485,62 @@ async function sendMessage(message) {
 }
 
 function logout() {
+    if (sessionHeartbeatHandle) {
+        window.clearInterval(sessionHeartbeatHandle);
+        sessionHeartbeatHandle = null;
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.href = "/";
+}
+
+async function validateCurrentSession() {
+    try {
+        const response = await fetch("/auth/session", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            logout();
+            return false;
+        }
+
+        if (!response.ok) {
+            return false;
+        }
+
+        const data = await readJson(response);
+        const latestUser = data.user || null;
+        if (!latestUser) {
+            logout();
+            return false;
+        }
+
+        const latestRole = latestUser.role || "";
+        const savedRole = savedUser?.role || "";
+        const roleChanged = savedRole && savedRole !== latestRole;
+        const lostOperatorAccess = isOperatorUser() && latestRole !== "operator" && latestRole !== "admin";
+
+        if (!latestUser.is_active || roleChanged || lostOperatorAccess) {
+            logout();
+            return false;
+        }
+
+        localStorage.setItem("user", JSON.stringify(latestUser));
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function startSessionHeartbeat() {
+    if (sessionHeartbeatHandle) {
+        window.clearInterval(sessionHeartbeatHandle);
+    }
+
+    sessionHeartbeatHandle = window.setInterval(() => {
+        validateCurrentSession();
+    }, SESSION_HEARTBEAT_INTERVAL_MS);
 }
 
 if (openOperatorPanelButton && operatorModal) {
@@ -1579,15 +1655,27 @@ if (operatorCreateForm) {
     operatorCreateForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
+        if (isCreatingOperatorRequestPending) {
+            return;
+        }
+
         const payload = {
             email: document.getElementById("operator-email").value.trim()
         };
+
+        const submitButton = operatorCreateForm.querySelector('button[type="submit"]');
+        const emailInput = document.getElementById("operator-email");
 
         if (!payload.email) {
             showOperatorMessage("Operator email is required.");
             return;
         }
 
+        isCreatingOperatorRequestPending = true;
+        setOperatorButtonPendingState(submitButton, true, "Create Operator", "Creating...");
+        if (emailInput) {
+            emailInput.disabled = true;
+        }
         showOperatorMessage("");
 
         try {
@@ -1608,6 +1696,12 @@ if (operatorCreateForm) {
             await loadOperators();
         } catch (error) {
             showOperatorMessage("Unable to create operator right now.");
+        } finally {
+            isCreatingOperatorRequestPending = false;
+            setOperatorButtonPendingState(submitButton, false, "Create Operator", "Creating...");
+            if (emailInput) {
+                emailInput.disabled = false;
+            }
         }
     });
 }
@@ -1712,6 +1806,7 @@ async function initializePage() {
     renderMachineMetrics();
     autoResizeTextarea();
     updateChatEmptyState();
+    startSessionHeartbeat();
     if (isAdminUser()) {
         await loadOperators();
     }

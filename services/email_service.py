@@ -42,6 +42,29 @@ def get_brevo_api_key():
     return os.getenv("BREVO_API_KEY", "").strip()
 
 
+def get_request_timeout_seconds():
+    """Read the Brevo timeout safely, even if the env value is malformed."""
+    raw_value = os.getenv("BREVO_API_TIMEOUT_SECONDS", "15").strip()
+
+    try:
+        timeout_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid BREVO_API_TIMEOUT_SECONDS value %r. Falling back to 15 seconds.",
+            raw_value,
+        )
+        return 15
+
+    if timeout_seconds <= 0:
+        logger.warning(
+            "Non-positive BREVO_API_TIMEOUT_SECONDS value %r. Falling back to 15 seconds.",
+            raw_value,
+        )
+        return 15
+
+    return timeout_seconds
+
+
 def get_email_sender_config():
     """Return the configured sender details used for transactional emails."""
     api_key = get_brevo_api_key()
@@ -50,7 +73,7 @@ def get_email_sender_config():
 
     mail_from = os.getenv("MAIL_FROM", "").strip()
     mail_from_name = os.getenv("MAIL_FROM_NAME", "ECE-BOT").strip() or "ECE-BOT"
-    request_timeout = int(os.getenv("BREVO_API_TIMEOUT_SECONDS", "15").strip())
+    request_timeout = get_request_timeout_seconds()
 
     if not mail_from or not EMAIL_PATTERN.fullmatch(mail_from):
         return None, None, None, None, "The email sender is not configured correctly. Please contact support."
@@ -91,8 +114,21 @@ def send_email_via_brevo_api(to_email, subject, text_body, html_body):
             "The email service is temporarily unavailable. Please try again later.",
             error_text,
         )
+    except Exception as error:
+        error_text = format_provider_error(error)
+        logger.exception("Unexpected email failure before Brevo response for %s: %s", to_email, error_text)
+        return False, with_debug_details(
+            "The email service could not be prepared correctly. Please contact support.",
+            error_text,
+        )
 
     if response.ok:
+        logger.info(
+            "Brevo API accepted email for %s with subject %r and status %s",
+            to_email,
+            subject,
+            response.status_code,
+        )
         return True, "OTP sent successfully."
 
     error_text = response.text.strip()

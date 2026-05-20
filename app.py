@@ -506,6 +506,14 @@ def login():
     )
 
 
+@app.route("/auth/session", methods=["GET"])
+@token_required
+def auth_session():
+    """Validate the current token and return the latest user profile."""
+    user = find_user_by_id(request.user_id)
+    return jsonify({"user": build_user_response(user)})
+
+
 @app.route("/auth/forgot-password/request-otp", methods=["POST"])
 def request_password_reset_otp():
     """Send one OTP for password reset."""
