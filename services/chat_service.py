@@ -45,11 +45,12 @@ def build_chat_reply(user_id, session_id, hardware_id, message, hardware_item, m
     add_chat_message(session_id, "user", message)
 
     prediction = predict_intent(model_bundle, message)
+    confidence = prediction["confidence"] if prediction else 0.0
+    intent_tag = prediction["tag"] if prediction else None
 
-    if prediction and prediction["confidence"] > INTENT_CONFIDENCE_THRESHOLD:
+    if prediction and confidence >= INTENT_CONFIDENCE_THRESHOLD:
         bot_response = prediction["response"]
         response_source = "intent_model"
-        confidence = prediction["confidence"]
     else:
         bot_response = get_gemini_response(
             hardware_item=hardware_item,
@@ -57,7 +58,6 @@ def build_chat_reply(user_id, session_id, hardware_id, message, hardware_item, m
             previous_messages=previous_messages,
         )
         response_source = "LLM"
-        confidence = prediction["confidence"] if prediction else 0.0
 
     add_chat_message(session_id, "assistant", bot_response, response_source, confidence)
 
@@ -65,6 +65,8 @@ def build_chat_reply(user_id, session_id, hardware_id, message, hardware_item, m
         "reply": bot_response,
         "source": response_source,
         "confidence": round(confidence, 4),
+        "intent": intent_tag,
+        "fallback_to_llm": response_source == "LLM",
         "hardware_id": hardware_id,
         "session_id": session_id,
     }

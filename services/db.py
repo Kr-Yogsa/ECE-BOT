@@ -1,9 +1,10 @@
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text, create_engine, inspect, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessionmaker
 
 
@@ -11,6 +12,7 @@ Base = declarative_base()
 engine = None
 SessionLocal = None
 IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
+LOGGER = logging.getLogger(__name__)
 
 
 class User(Base):
@@ -112,8 +114,15 @@ def init_db():
         normalize_database_url(database_url),
         future=True,
         pool_pre_ping=True,
+        pool_recycle=300,
+        pool_timeout=15,
+        pool_use_lifo=True,
         pool_size=10,
         max_overflow=20,
+        connect_args={
+            "connect_timeout": 10,
+            "application_name": "ece-bot",
+        },
     )
 
     SessionLocal = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
@@ -126,6 +135,27 @@ def get_now():
 
 def get_session():
     return SessionLocal()
+
+
+def close_session_safely(db):
+    """Close a session without crashing the request if the DB server already dropped it."""
+    if db is None:
+        return
+
+    try:
+        db.close()
+    except SQLAlchemyError:
+        try:
+            db.invalidate()
+        except Exception:
+            pass
+
+        try:
+            SessionLocal.remove()
+        except Exception:
+            pass
+
+        LOGGER.warning("Database session close failed after connection drop.", exc_info=True)
 
 
 def to_dict(model, fields):
@@ -237,7 +267,7 @@ def create_machine_telemetry(
     db.add(telemetry)
     db.commit()
     db.refresh(telemetry)
-    db.close()
+    close_session_safely(db)
     return telemetry.id
 
 
@@ -249,7 +279,7 @@ def get_latest_machine_telemetry(machine_id):
         .order_by(MachineTelemetry.recorded_at.desc(), MachineTelemetry.id.desc())
         .first()
     )
-    db.close()
+    close_session_safely(db)
 
     if not telemetry:
         return None
@@ -276,7 +306,7 @@ def get_machine_live_stream(machine_id):
         .filter(MachineLiveStream.machine_id == machine_id)
         .first()
     )
-    db.close()
+    close_session_safely(db)
 
     if not stream:
         return None
@@ -309,7 +339,7 @@ def upsert_machine_live_stream(machine_id, stream_url, source="raspberry_pi"):
     db.commit()
     db.refresh(stream)
     result = to_dict(stream, ["id", "machine_id", "stream_url", "updated_at", "source"])
-    db.close()
+    close_session_safely(db)
     return result
 
 
@@ -322,7 +352,7 @@ def list_machine_telemetry(machine_id, limit=100):
         .limit(limit)
         .all()
     )
-    db.close()
+    close_session_safely(db)
     return [
         to_dict(
             row,
@@ -361,7 +391,7 @@ def delete_old_machine_telemetry(machine_id, keep_latest=5000):
         ).delete(synchronize_session=False)
         db.commit()
 
-    db.close()
+    close_session_safely(db)
 
 
 def build_machine_summary(machine_id, window_start):
@@ -388,7 +418,7 @@ def build_machine_summary(machine_id, window_start):
         ),
         {"machine_id": machine_id, "window_start": window_start},
     ).mappings().first()
-    db.close()
+    close_session_safely(db)
 
     if not summary:
         return {
@@ -455,7 +485,7 @@ def get_machine_dashboard(machine_id):
             "window_end": end_of_yesterday_ist.astimezone(timezone.utc),
         },
     ).mappings().first()
-    db.close()
+    close_session_safely(db)
 
     if yesterday_filtered:
         summaries["yesterday"] = dict(yesterday_filtered)
@@ -486,7 +516,7 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    db.close()
+    close_session_safely(db)
     return user.id
 
 
@@ -494,12 +524,12 @@ def update_user_password(email, password_hash):
     db = get_session()
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     user.password_hash = password_hash
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 
 
@@ -507,14 +537,14 @@ def update_user_account_setup(user_id, name, password_hash, email_verified=True)
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     user.name = name
     user.password_hash = password_hash
     user.email_verified = 1 if email_verified else 0
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 
 
@@ -522,12 +552,12 @@ def update_user_status(user_id, is_active):
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     user.is_active = 1 if is_active else 0
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 
 
@@ -535,19 +565,19 @@ def update_user_role(user_id, role):
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     user.role = role
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 def promote_user_to_operator(user_id, created_by_user_id=None, email_verified=True, is_active=True):
     """Promote an existing account to operator access and keep it usable immediately."""
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     user.role = "operator"
@@ -555,21 +585,21 @@ def promote_user_to_operator(user_id, created_by_user_id=None, email_verified=Tr
     user.email_verified = 1 if email_verified else 0
     user.created_by_user_id = created_by_user_id
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 
 
 def count_users_by_role(role):
     db = get_session()
     count = db.query(User).filter(User.role == role).count()
-    db.close()
+    close_session_safely(db)
     return count
 
 
 def find_user_by_id(user_id):
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
-    db.close()
+    close_session_safely(db)
 
     if not user:
         return None
@@ -593,7 +623,7 @@ def find_user_by_id(user_id):
 def find_user_by_email(email):
     db = get_session()
     user = db.query(User).filter(User.email == email).first()
-    db.close()
+    close_session_safely(db)
 
     if not user:
         return None
@@ -622,7 +652,7 @@ def list_users_by_role(role):
         .order_by(User.created_at.desc(), User.id.desc())
         .all()
     )
-    db.close()
+    close_session_safely(db)
     return [
         to_dict(
             user,
@@ -636,7 +666,7 @@ def delete_user_by_id(user_id):
     db = get_session()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
+        close_session_safely(db)
         return False
 
     session_ids = [item.id for item in db.query(ChatSession.id).filter(ChatSession.user_id == user_id).all()]
@@ -647,7 +677,7 @@ def delete_user_by_id(user_id):
 
     db.delete(user)
     db.commit()
-    db.close()
+    close_session_safely(db)
     return True
 
 
@@ -655,7 +685,7 @@ def clear_otps(email, purpose):
     db = get_session()
     db.query(OtpRequest).filter(OtpRequest.email == email, OtpRequest.purpose == purpose).delete()
     db.commit()
-    db.close()
+    close_session_safely(db)
 
 
 def create_otp_request(email, otp_hash, purpose, expires_at):
@@ -671,7 +701,7 @@ def create_otp_request(email, otp_hash, purpose, expires_at):
     db.add(otp)
     db.commit()
     db.refresh(otp)
-    db.close()
+    close_session_safely(db)
     return otp.id
 
 
@@ -683,7 +713,7 @@ def get_latest_otp_request(email, purpose):
         .order_by(OtpRequest.id.desc())
         .first()
     )
-    db.close()
+    close_session_safely(db)
 
     if not otp:
         return None
@@ -697,7 +727,7 @@ def mark_otp_used(otp_id):
     if otp:
         otp.is_used = 1
         db.commit()
-    db.close()
+    close_session_safely(db)
 
 
 def create_chat_session(user_id, hardware_id, title):
@@ -713,7 +743,7 @@ def create_chat_session(user_id, hardware_id, title):
     db.add(session)
     db.commit()
     db.refresh(session)
-    db.close()
+    close_session_safely(db)
     return session.id
 
 
@@ -724,7 +754,7 @@ def get_chat_session(session_id, user_id):
         .filter(ChatSession.id == session_id, ChatSession.user_id == user_id)
         .first()
     )
-    db.close()
+    close_session_safely(db)
 
     if not session:
         return None
@@ -750,7 +780,7 @@ def add_chat_message(session_id, role, message, response_source=None, confidence
         session.updated_at = now
 
     db.commit()
-    db.close()
+    close_session_safely(db)
 
 
 def get_chat_sessions(user_id):
@@ -761,7 +791,7 @@ def get_chat_sessions(user_id):
         .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
         .all()
     )
-    db.close()
+    close_session_safely(db)
     return [
         to_dict(session, ["id", "hardware_id", "title", "created_at", "updated_at"])
         for session in sessions
@@ -777,7 +807,7 @@ def get_chat_messages(session_id, user_id):
         .order_by(ChatMessage.id.asc())
         .all()
     )
-    db.close()
+    close_session_safely(db)
     return [
         to_dict(message, ["id", "role", "message", "response_source", "confidence", "created_at"])
         for message in messages

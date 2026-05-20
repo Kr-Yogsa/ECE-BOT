@@ -1,5 +1,9 @@
 FROM python:3.10-slim
 
+LABEL org.opencontainers.image.title="ECE-BOT" \
+      org.opencontainers.image.source="https://github.com/Kr-Yogsa/ECE-BOT" \
+      org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 COPY requirements.txt .

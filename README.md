@@ -11,7 +11,7 @@ ECE-BOT is a Flask based hybrid chatbot and machine monitoring web app for indus
 - Role based access: admin, operator, user
 - Hardware-specific chatbots loaded from JSON files in `data/`
 - TF-IDF + Random Forest intent model for known questions
-- Gemini fallback for low-confidence answers
+- LLM fallback for low-confidence answers
 - Chat sessions and chat history
 - Admin operator management
 - MQTT telemetry ingest for temperature, humidity, and vibration
@@ -89,7 +89,7 @@ User:
 2. User selects a hardware assistant: MELFA, PLC, or CNC.
 3. Backend predicts intent using the trained local model.
 4. If confidence is above `0.75`, a predefined answer is returned.
-5. If confidence is low, Gemini is used as fallback.
+5. If confidence is low, LLM is used as fallback.
 6. User and assistant messages are saved in PostgreSQL.
 
 ## Main APIs
@@ -145,8 +145,7 @@ Required for the web app:
 JWT_SECRET=change-this-secret-key
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.your-project.supabase.co:5432/postgres
 APP_BASE_URL=https://your-app.onrender.com
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-1.5-flash
+API_KEY=your-api-key
 BREVO_API_KEY=your-brevo-api-key
 MAIL_FROM=no-reply@your-verified-domain.com
 MAIL_FROM_NAME=ECE-BOT
@@ -208,7 +207,7 @@ docker run -p 8080:8080 \
   -e JWT_SECRET=your-secret \
   -e DATABASE_URL=your-postgres-url \
   -e APP_BASE_URL=https://your-app.onrender.com \
-  -e GEMINI_API_KEY=your-gemini-key \
+  -e API_KEY=your-key \
   -e BREVO_API_KEY=your-brevo-key \
   -e MAIL_FROM=no-reply@your-domain.com \
   -e MACHINE_LIVE_UPDATE_TOKEN=your-live-update-token \

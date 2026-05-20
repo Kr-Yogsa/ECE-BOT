@@ -93,23 +93,32 @@
                         <strong id="machine-stats-machine-name" class="machine-stats-machine-name">--</strong>
                         <span id="machine-stats-status" class="machine-status-badge is-off">Components are off</span>
                     </div>
-                    <div id="machine-stats-range-tabs" class="machine-range-tabs" role="tablist" aria-label="Machine stats range">
-                        <button type="button" class="machine-range-tab" data-range="last_1_minute">1 Min</button>
-                        <button type="button" class="machine-range-tab is-selected" data-range="last_1_hour">1H</button>
-                        <button type="button" class="machine-range-tab" data-range="today">Today</button>
-                        <button type="button" class="machine-range-tab" data-range="yesterday">Yesterday</button>
+                    <div class="machine-stats-filter-stack">
+                        <div id="machine-stats-range-tabs" class="machine-range-tabs" role="tablist" aria-label="Machine stats range">
+                            <button type="button" class="machine-range-tab is-selected" data-range="live">Live</button>
+                            <button type="button" class="machine-range-tab" data-range="today">Today</button>
+                            <button type="button" class="machine-range-tab" data-range="yesterday">Yesterday</button>
+                            <button type="button" class="machine-range-tab" data-range="custom">Custom</button>
+                        </div>
+                        <div id="machine-custom-range-controls" class="machine-custom-range-controls hidden-block">
+                            <label class="machine-date-field">
+                                <span>Date</span>
+                                <input id="machine-custom-date-from" type="date">
+                            </label>
+                            <button id="machine-custom-range-apply" type="button" class="secondary-button small-button">Show</button>
+                        </div>
                     </div>
                 </div>
 
                 <section class="machine-highlight-card">
-                    <p id="machine-stats-range-label" class="machine-highlight-label">Last 1 hour</p>
+                    <p id="machine-stats-range-label" class="machine-highlight-label">Live telemetry</p>
                     <strong id="machine-stats-reading-count" class="machine-highlight-value">0 readings</strong>
                     <span id="machine-stats-last-updated" class="machine-highlight-subtitle">No telemetry yet</span>
                 </section>
 
                 <div class="machine-metrics-grid">
-                    <article class="machine-metric-card">
-                        <span>Temperature</span>
+                    <article class="machine-metric-card machine-metric-card-temperature">
+                        <span class="machine-metric-title">Temperature</span>
                         <strong id="machine-metric-temperature">--</strong>
                         <div id="machine-metric-temperature-meta" class="machine-metric-meta">
                             <span>Avg --</span>
@@ -117,8 +126,8 @@
                             <span>Max --</span>
                         </div>
                     </article>
-                    <article class="machine-metric-card">
-                        <span>Humidity</span>
+                    <article class="machine-metric-card machine-metric-card-humidity">
+                        <span class="machine-metric-title">Humidity</span>
                         <strong id="machine-metric-humidity">--</strong>
                         <div id="machine-metric-humidity-meta" class="machine-metric-meta">
                             <span>Avg --</span>
@@ -126,8 +135,8 @@
                             <span>Max --</span>
                         </div>
                     </article>
-                    <article class="machine-metric-card">
-                        <span>Vibration</span>
+                    <article class="machine-metric-card machine-metric-card-vibration">
+                        <span class="machine-metric-title">Vibration</span>
                         <strong id="machine-metric-vibration">--</strong>
                         <div id="machine-metric-vibration-meta" class="machine-metric-meta">
                             <span>Avg --</span>
@@ -140,14 +149,20 @@
                 <section class="machine-trend-card">
                     <div class="machine-trend-header">
                         <div>
-                            <p class="machine-highlight-label">Readings Chart</p>
-                            <strong class="machine-trend-title">Sensor readings by range</strong>
+                            <p class="machine-highlight-label">Telemetry Chart</p>
+                            <strong class="machine-trend-title">Temperature, humidity, and vibration over time</strong>
                         </div>
-                        <span id="machine-trend-total" class="machine-highlight-subtitle">0 total readings</span>
+                        <div class="machine-telemetry-legend">
+                            <span class="machine-legend-item machine-legend-temperature">Temperature</span>
+                            <span class="machine-legend-item machine-legend-humidity">Humidity</span>
+                            <span class="machine-legend-item machine-legend-vibration">Vibration</span>
+                        </div>
                     </div>
-                    <div id="machine-trend-bars" class="machine-trend-bars" aria-label="Machine reading count chart"></div>
+                    <div class="machine-telemetry-chart-shell">
+                        <div id="machine-telemetry-chart" class="machine-telemetry-chart" aria-label="Combined telemetry chart"></div>
+                        <div id="machine-telemetry-tooltip" class="machine-telemetry-tooltip hidden-block"></div>
+                    </div>
                 </section>
-
             </section>
         </section>
     </div>

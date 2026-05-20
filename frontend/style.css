@@ -946,14 +946,7 @@ body.light-theme .profile-version-indicator {
 
 .machine-stats-section {
     margin-top: 24px;
-}
-
-.machine-stats-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 20px;
+    display: block;
 }
 
 .machine-stats-machine-label,
@@ -1027,6 +1020,55 @@ body.light-theme .profile-version-indicator {
     color: #f8fafc;
 }
 
+.machine-stats-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.machine-stats-filter-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.machine-custom-range-controls {
+    display: flex;
+    align-items: end;
+    gap: 10px;
+}
+
+.machine-custom-range-controls.hidden-block {
+    display: none;
+}
+
+.machine-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 148px;
+}
+
+.machine-date-field span {
+    color: var(--text-soft);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.machine-date-field input {
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.45);
+    color: var(--text-main);
+    width: 100%;
+}
+
 .machine-highlight-card,
 .machine-trend-card {
     border-radius: 24px;
@@ -1040,81 +1082,6 @@ body.light-theme .profile-version-indicator {
     margin-top: 10px;
     font-size: clamp(34px, 5vw, 52px);
     line-height: 1.05;
-}
-
-.machine-highlight-subtitle {
-    display: block;
-    margin-top: 8px;
-    color: var(--text-soft);
-    font-size: 14px;
-}
-
-.machine-trend-card {
-    margin-top: 18px;
-}
-
-.machine-trend-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 18px;
-}
-
-.machine-trend-bars {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-    margin-top: 22px;
-    min-height: 190px;
-}
-
-.machine-trend-bar-item {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: 10px;
-    min-width: 0;
-}
-
-.machine-trend-value,
-.machine-trend-label {
-    color: var(--text-soft);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    text-align: center;
-}
-
-.machine-trend-value {
-    color: var(--text-main);
-    font-size: 15px;
-}
-
-.machine-trend-bar-track {
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    min-height: 130px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
-    overflow: hidden;
-}
-
-.machine-trend-bar-fill {
-    width: 100%;
-    border-radius: 14px 14px 0 0;
-    background: linear-gradient(180deg, #6ea8ff, #3657a7);
-    transition: height 0.25s ease;
-}
-
-.machine-trend-bar-item.is-selected .machine-trend-bar-track {
-    border-color: rgba(110, 168, 255, 0.62);
-    box-shadow: inset 0 0 0 1px rgba(110, 168, 255, 0.2);
-}
-
-.machine-trend-bar-item.is-selected .machine-trend-label {
-    color: #dbeafe;
 }
 
 .machine-metrics-grid {
@@ -1132,7 +1099,19 @@ body.light-theme .profile-version-indicator {
     min-height: 164px;
 }
 
-.machine-metric-card span {
+.machine-metric-card-temperature {
+    box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.08);
+}
+
+.machine-metric-card-humidity {
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+.machine-metric-card-vibration {
+    box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.08);
+}
+
+.machine-metric-title {
     display: block;
     color: var(--text-soft);
     font-size: 13px;
@@ -1165,12 +1144,129 @@ body.light-theme .profile-version-indicator {
     line-height: 1;
 }
 
-.machine-live-card {
-    margin-top: 24px;
-    border-radius: 24px;
+.machine-highlight-subtitle {
+    display: block;
+    margin-top: 8px;
+    color: var(--text-soft);
+    font-size: 14px;
+}
+
+.machine-trend-card {
+    margin-top: 18px;
+}
+
+.machine-trend-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.machine-telemetry-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.machine-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-soft);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.machine-legend-item::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 16px currentColor;
+}
+
+.machine-legend-temperature {
+    color: #fb923c;
+}
+
+.machine-legend-humidity {
+    color: #22d3ee;
+}
+
+.machine-legend-vibration {
+    color: #c084fc;
+}
+
+.machine-telemetry-chart-shell {
+    position: relative;
+    margin-top: 18px;
+}
+
+.machine-telemetry-chart {
+    position: relative;
+    height: 340px;
+    min-height: 340px;
+    border-radius: 18px;
     border: 1px solid var(--border);
-    background: rgba(15, 23, 42, 0.4);
-    padding: 22px 24px;
+    background: linear-gradient(180deg, rgba(12, 18, 32, 0.92), rgba(15, 23, 42, 0.82));
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(110, 168, 255, 0.04);
+}
+
+.machine-telemetry-chart::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    background-size: 100% 20%, 10% 100%;
+    pointer-events: none;
+}
+
+.machine-telemetry-chart svg {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.machine-telemetry-tooltip {
+    position: absolute;
+    min-width: 160px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(5, 10, 19, 0.94);
+    color: var(--text-main);
+    box-shadow: 0 22px 40px rgba(2, 6, 23, 0.42);
+    backdrop-filter: blur(18px);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.machine-telemetry-tooltip strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: #f8fafc;
+}
+
+.machine-telemetry-tooltip span {
+    display: block;
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-top: 6px;
+    line-height: 1.35;
 }
 
 .machine-live-header {
@@ -1584,14 +1680,17 @@ body.chat-is-empty .chat-messages {
         grid-template-columns: 1fr;
     }
 
-    .machine-stats-topbar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
+    .machine-stats-topbar,
+    .machine-trend-header,
     .machine-live-header {
         flex-direction: column;
         align-items: stretch;
+        gap: 14px;
+    }
+
+    .machine-stats-filter-stack {
+        align-items: stretch;
+        width: 100%;
     }
 
     .machine-live-actions {
@@ -1619,21 +1718,70 @@ body.chat-is-empty .chat-messages {
         text-align: center;
     }
 
-    .machine-trend-header {
-        flex-direction: column;
-    }
-
-    .machine-trend-bars {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .machine-range-tabs {
         width: 100%;
         overflow-x: auto;
+        padding: 5px;
+        gap: 6px;
     }
 
     .machine-range-tab {
         flex: 1 0 auto;
+        min-width: 76px;
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+
+    .machine-custom-range-controls {
+        width: 100%;
+        align-items: stretch;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .machine-date-field {
+        min-width: 100%;
+    }
+
+    .machine-custom-range-controls .small-button {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .machine-highlight-card,
+    .machine-trend-card,
+    .machine-metric-card {
+        padding: 18px;
+    }
+
+    .machine-highlight-value {
+        font-size: clamp(28px, 10vw, 42px);
+    }
+
+    .machine-metric-card strong {
+        font-size: 30px;
+        margin-top: 18px;
+    }
+
+    .machine-telemetry-legend {
+        justify-content: flex-start;
+        gap: 8px;
+    }
+
+    .machine-legend-item {
+        font-size: 11px;
+        padding: 7px 10px;
+    }
+
+    .machine-telemetry-chart {
+        height: 260px;
+        min-height: 260px;
+        border-radius: 16px;
+    }
+
+    .machine-telemetry-tooltip {
+        min-width: 140px;
+        padding: 10px 12px;
     }
 
     .chat-empty-state h2 {

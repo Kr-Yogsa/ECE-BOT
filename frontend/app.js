@@ -39,14 +39,17 @@ const machineStatsRangeTabs = document.getElementById("machine-stats-range-tabs"
 const machineStatsRangeLabel = document.getElementById("machine-stats-range-label");
 const machineStatsReadingCount = document.getElementById("machine-stats-reading-count");
 const machineStatsLastUpdated = document.getElementById("machine-stats-last-updated");
-const machineTrendBars = document.getElementById("machine-trend-bars");
-const machineTrendTotal = document.getElementById("machine-trend-total");
 const machineMetricTemperature = document.getElementById("machine-metric-temperature");
 const machineMetricTemperatureMeta = document.getElementById("machine-metric-temperature-meta");
 const machineMetricHumidity = document.getElementById("machine-metric-humidity");
 const machineMetricHumidityMeta = document.getElementById("machine-metric-humidity-meta");
 const machineMetricVibration = document.getElementById("machine-metric-vibration");
 const machineMetricVibrationMeta = document.getElementById("machine-metric-vibration-meta");
+const machineTelemetryChart = document.getElementById("machine-telemetry-chart");
+const machineTelemetryTooltip = document.getElementById("machine-telemetry-tooltip");
+const machineCustomRangeControls = document.getElementById("machine-custom-range-controls");
+const machineCustomDateFrom = document.getElementById("machine-custom-date-from");
+const machineCustomRangeApply = document.getElementById("machine-custom-range-apply");
 const machineLiveSection = document.getElementById("machine-live-section");
 const machineLiveTitle = document.getElementById("machine-live-title");
 const machineLiveStatus = document.getElementById("machine-live-status");
@@ -76,7 +79,9 @@ let hardwareMap = {};
 let lastUserMessage = "";
 let requestedBotId = "";
 let machineStatsPollHandle = null;
-let selectedMachineStatsRange = "last_1_minute";
+let selectedMachineStatsRange = "live";
+let machineStatsHistoryCache = [];
+let machineStatsDashboardCache = null;
 let isCreatingOperatorRequestPending = false;
 const pendingOperatorStatusRequests = new Set();
 const SESSION_HEARTBEAT_INTERVAL_MS = 60000;
@@ -243,30 +248,6 @@ function renderMachineMetrics() {
 
     machineMetricsSection.classList.remove("hidden-block");
 
-    if (machineMetricTemperature) {
-        machineMetricTemperature.textContent = "--";
-    }
-
-    if (machineMetricTemperatureMeta) {
-        machineMetricTemperatureMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
-    }
-
-    if (machineMetricHumidity) {
-        machineMetricHumidity.textContent = "--";
-    }
-
-    if (machineMetricHumidityMeta) {
-        machineMetricHumidityMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
-    }
-
-    if (machineMetricVibration) {
-        machineMetricVibration.textContent = "--";
-    }
-
-    if (machineMetricVibrationMeta) {
-        machineMetricVibrationMeta.innerHTML = "<span>Avg --</span><span>Min --</span><span>Max --</span>";
-    }
-
     if (machineStatsMachineName) {
         machineStatsMachineName.textContent = hardwareMap[currentBotId]?.name || "--";
     }
@@ -289,10 +270,14 @@ function renderMachineMetrics() {
         machineStatsLastUpdated.textContent = "No telemetry yet";
     }
 
-    renderMachineTrendChart();
+    renderMachineMetricCard(machineMetricTemperature, machineMetricTemperatureMeta, [], "temperature", "C");
+    renderMachineMetricCard(machineMetricHumidity, machineMetricHumidityMeta, [], "humidity", "%");
+    renderMachineMetricCard(machineMetricVibration, machineMetricVibrationMeta, [], "vibration", "g");
+    renderMachineCombinedChart([]);
+    toggleMachineCustomRangeControls();
 }
 
-function formatMachineMetricValue(value, suffix) {
+function formatMachineMetricValue(value, suffix = "", digits = 2) {
     if (value === null || value === undefined || value === "") {
         return "--";
     }
@@ -302,7 +287,8 @@ function formatMachineMetricValue(value, suffix) {
         return "--";
     }
 
-    return `${numberValue.toFixed(2)} ${suffix}`;
+    const formatted = numberValue.toFixed(digits);
+    return suffix ? `${formatted}${suffix}` : formatted;
 }
 
 function formatMachineMetricPlain(value, suffix) {
@@ -316,6 +302,19 @@ function formatMachineMetricPlain(value, suffix) {
     }
 
     return `${numberValue.toFixed(2)}${suffix}`;
+}
+
+function formatMachineMetricCompact(value, digits = 2) {
+    if (value === null || value === undefined || value === "") {
+        return "--";
+    }
+
+    const numberValue = Number(value);
+    if (Number.isNaN(numberValue)) {
+        return "--";
+    }
+
+    return numberValue.toFixed(digits);
 }
 
 function formatMachineStatsTimestamp(value) {
@@ -333,63 +332,210 @@ function formatMachineStatsTimestamp(value) {
 
 function getMachineRangeLabel(rangeKey) {
     const labels = {
-        last_1_minute: "Last 1 minute",
-        last_1_hour: "Last 1 hour",
+        live: "Live telemetry",
         today: "Today",
-        yesterday: "Yesterday"
+        yesterday: "Yesterday",
+        custom: "Custom date"
     };
 
-    return labels[rangeKey] || "Last 1 minute";
+    return labels[rangeKey] || "Live telemetry";
 }
 
-function renderMachineTrendChart(summaries = {}) {
-    if (!machineTrendBars) {
-        return;
+function setDefaultMachineCustomDates() {
+    const today = new Date();
+    const formatDateForInput = (value) => value.toISOString().slice(0, 10);
+
+    if (machineCustomDateFrom && !machineCustomDateFrom.value) {
+        machineCustomDateFrom.value = formatDateForInput(today);
+    }
+}
+
+function parseMachineRecordedAt(value) {
+    if (!value) {
+        return null;
     }
 
-    const ranges = [
-        ["last_1_minute", "1 Min"],
-        ["last_1_hour", "1H"],
-        ["today", "Today"],
-        ["yesterday", "Yesterday"]
-    ];
-    const values = ranges.map(([key]) => Number(summaries?.[key]?.reading_count || 0));
-    const maxValue = Math.max(...values, 1);
-    const totalValue = values.reduce((sum, value) => sum + value, 0);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-    machineTrendBars.innerHTML = "";
+function filterMachineHistoryByRange(records, rangeKey) {
+    const now = new Date();
+    let startDate = null;
+    let endDate = null;
 
-    ranges.forEach(([key, label], index) => {
-        const value = values[index];
-        const barItem = document.createElement("div");
-        barItem.className = "machine-trend-bar-item";
-        barItem.classList.toggle("is-selected", key === selectedMachineStatsRange);
+    if (rangeKey === "live") {
+        startDate = new Date(now.getTime() - (60 * 60 * 1000));
+        endDate = now;
+    } else if (rangeKey === "today") {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        endDate = now;
+    } else if (rangeKey === "yesterday") {
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - 1);
+    } else if (rangeKey === "custom") {
+        if (!machineCustomDateFrom?.value) {
+            return [];
+        }
 
-        const valueElement = document.createElement("span");
-        valueElement.className = "machine-trend-value";
-        valueElement.textContent = String(value);
+        startDate = new Date(`${machineCustomDateFrom.value}T00:00:00`);
+        endDate = new Date(`${machineCustomDateFrom.value}T23:59:59.999`);
+    }
 
-        const barTrack = document.createElement("div");
-        barTrack.className = "machine-trend-bar-track";
+    return records.filter((record) => {
+        const recordDate = parseMachineRecordedAt(record.recorded_at);
+        if (!recordDate) {
+            return false;
+        }
 
-        const barFill = document.createElement("div");
-        barFill.className = "machine-trend-bar-fill";
-        barFill.style.height = `${Math.max(8, (value / maxValue) * 100)}%`;
-        barTrack.appendChild(barFill);
+        if (startDate && recordDate < startDate) {
+            return false;
+        }
 
-        const labelElement = document.createElement("span");
-        labelElement.className = "machine-trend-label";
-        labelElement.textContent = label;
+        if (endDate && recordDate > endDate) {
+            return false;
+        }
 
-        barItem.appendChild(valueElement);
-        barItem.appendChild(barTrack);
-        barItem.appendChild(labelElement);
-        machineTrendBars.appendChild(barItem);
+        return true;
+    });
+}
+
+function buildMachineSummaryFromRecords(records) {
+    const summary = {
+        reading_count: records.length,
+        avg_temperature: null,
+        min_temperature: null,
+        max_temperature: null,
+        avg_humidity: null,
+        min_humidity: null,
+        max_humidity: null,
+        avg_vibration: null,
+        min_vibration: null,
+        max_vibration: null,
+        latest_recorded_at: null,
+        earliest_recorded_at: null,
+    };
+
+    if (!records.length) {
+        return summary;
+    }
+
+    const buildMetric = (key) => {
+        const values = records
+            .map((record) => Number(record[key]))
+            .filter((value) => !Number.isNaN(value));
+
+        if (!values.length) {
+            return { avg: null, min: null, max: null };
+        }
+
+        const total = values.reduce((sum, value) => sum + value, 0);
+        return {
+            avg: total / values.length,
+            min: Math.min(...values),
+            max: Math.max(...values),
+        };
+    };
+
+    const temperatureStats = buildMetric("temperature");
+    const humidityStats = buildMetric("humidity");
+    const vibrationStats = buildMetric("vibration");
+    const sortedRecords = [...records].sort((a, b) => {
+        const dateA = parseMachineRecordedAt(a.recorded_at)?.getTime() || 0;
+        const dateB = parseMachineRecordedAt(b.recorded_at)?.getTime() || 0;
+        return dateA - dateB;
     });
 
-    if (machineTrendTotal) {
-        machineTrendTotal.textContent = `${totalValue} ${totalValue === 1 ? "total reading" : "total readings"}`;
+    summary.avg_temperature = temperatureStats.avg;
+    summary.min_temperature = temperatureStats.min;
+    summary.max_temperature = temperatureStats.max;
+    summary.avg_humidity = humidityStats.avg;
+    summary.min_humidity = humidityStats.min;
+    summary.max_humidity = humidityStats.max;
+    summary.avg_vibration = vibrationStats.avg;
+    summary.min_vibration = vibrationStats.min;
+    summary.max_vibration = vibrationStats.max;
+    summary.earliest_recorded_at = sortedRecords[0]?.recorded_at || null;
+    summary.latest_recorded_at = sortedRecords[sortedRecords.length - 1]?.recorded_at || null;
+
+    return summary;
+}
+
+function formatMachineCollectionDuration(startValue, endValue) {
+    const startDate = parseMachineRecordedAt(startValue);
+    const endDate = parseMachineRecordedAt(endValue);
+    if (!startDate || !endDate || endDate < startDate) {
+        return "--";
     }
+
+    const totalMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+    if (totalMinutes <= 0) {
+        return "Less than 1 min";
+    }
+
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+
+    if (days) {
+        parts.push(`${days}d`);
+    }
+    if (hours) {
+        parts.push(`${hours}h`);
+    }
+    if (minutes) {
+        parts.push(`${minutes}m`);
+    }
+
+    return parts.join(" ");
+}
+
+function buildMachineMetaText(summary, avgKey, minKey, maxKey, suffix) {
+    return `
+        <span>Avg ${formatMachineMetricPlain(summary?.[avgKey], suffix)}</span>
+        <span>Min ${formatMachineMetricPlain(summary?.[minKey], suffix)}</span>
+        <span>Max ${formatMachineMetricPlain(summary?.[maxKey], suffix)}</span>
+    `;
+}
+
+function buildSparklineSvg(values, color) {
+    const width = 220;
+    const height = 64;
+    const valuesSafe = values.filter((value) => !Number.isNaN(value));
+
+    if (!valuesSafe.length) {
+        return `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="${height - 10}" x2="${width}" y2="${height - 10}" stroke="rgba(148,163,184,0.25)" stroke-dasharray="5 6" />
+            </svg>
+        `;
+    }
+
+    const minValue = Math.min(...valuesSafe);
+    const maxValue = Math.max(...valuesSafe);
+    const rangeValue = Math.max(maxValue - minValue, 1);
+    const points = valuesSafe.map((value, index) => {
+        const x = valuesSafe.length === 1 ? width / 2 : (index / (valuesSafe.length - 1)) * width;
+        const y = height - 8 - (((value - minValue) / rangeValue) * (height - 18));
+        return `${x},${y}`;
+    });
+    const linePath = points.join(" ");
+    const areaPath = `${points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.replace(",", " ")}`).join(" ")} L ${width} ${height} L 0 ${height} Z`;
+
+    return `
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+                <linearGradient id="spark-${color.replace("#", "")}" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.35"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+                </linearGradient>
+            </defs>
+            <path d="${areaPath}" fill="url(#spark-${color.replace("#", "")})"></path>
+            <polyline fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${linePath}"></polyline>
+        </svg>
+    `;
 }
 
 function renderMachineRangeTabs() {
@@ -402,125 +548,268 @@ function renderMachineRangeTabs() {
     });
 }
 
-function buildMachineMetaText(summary, avgKey, minKey, maxKey, suffix) {
-    return `
-        <span>Avg ${formatMachineMetricPlain(summary?.[avgKey], suffix)}</span>
-        <span>Min ${formatMachineMetricPlain(summary?.[minKey], suffix)}</span>
-        <span>Max ${formatMachineMetricPlain(summary?.[maxKey], suffix)}</span>
-    `;
+function toggleMachineCustomRangeControls() {
+    if (!machineCustomRangeControls) {
+        return;
+    }
+
+    machineCustomRangeControls.classList.toggle("hidden-block", selectedMachineStatsRange !== "custom");
 }
 
-function renderMachineMetricsFromStats(latestStats, summary) {
-    if (machineMetricTemperature) {
-        machineMetricTemperature.textContent = formatMachineMetricValue(latestStats?.temperature, "C");
+function buildMachineTrendLabel(currentValue, averageValue, previousValue) {
+    if ([currentValue, averageValue, previousValue].some((item) => item === null || item === undefined || Number.isNaN(Number(item)))) {
+        return { text: "Steady", badge: "Stable" };
     }
 
-    if (machineMetricTemperatureMeta) {
-        machineMetricTemperatureMeta.innerHTML = buildMachineMetaText(
+    const currentNumber = Number(currentValue);
+    const averageNumber = Number(averageValue);
+    const previousNumber = Number(previousValue);
+
+    if (currentNumber > averageNumber * 1.12) {
+        return { text: "Rising", badge: "High" };
+    }
+
+    if (currentNumber < averageNumber * 0.88) {
+        return { text: "Falling", badge: "Low" };
+    }
+
+    if (currentNumber > previousNumber) {
+        return { text: "Upward", badge: "Watch" };
+    }
+
+    if (currentNumber < previousNumber) {
+        return { text: "Cooling", badge: "Stable" };
+    }
+
+    return { text: "Steady", badge: "Stable" };
+}
+
+function renderMachineMetricCard(valueElement, metaElement, records, valueKey, unit) {
+    const latestRecord = records[records.length - 1] || null;
+    const summary = buildMachineSummaryFromRecords(records);
+    const keyPrefix = valueKey;
+    const latestValue = latestRecord ? latestRecord[valueKey] : null;
+
+    if (valueElement) {
+        valueElement.textContent = formatMachineMetricValue(latestValue, unit ? ` ${unit}` : "");
+    }
+
+    if (metaElement) {
+        metaElement.innerHTML = buildMachineMetaText(
             summary,
-            "avg_temperature",
-            "min_temperature",
-            "max_temperature",
-            "C"
-        );
-    }
-
-    if (machineMetricHumidity) {
-        machineMetricHumidity.textContent = formatMachineMetricValue(latestStats?.humidity, "%");
-    }
-
-    if (machineMetricHumidityMeta) {
-        machineMetricHumidityMeta.innerHTML = buildMachineMetaText(
-            summary,
-            "avg_humidity",
-            "min_humidity",
-            "max_humidity",
-            "%"
-        );
-    }
-
-    if (machineMetricVibration) {
-        machineMetricVibration.textContent = formatMachineMetricValue(latestStats?.vibration, "g");
-    }
-
-    if (machineMetricVibrationMeta) {
-        machineMetricVibrationMeta.innerHTML = buildMachineMetaText(
-            summary,
-            "avg_vibration",
-            "min_vibration",
-            "max_vibration",
-            "g"
-        );
-    }
-
-    if (machineStatsRangeLabel) {
-        machineStatsRangeLabel.textContent = getMachineRangeLabel(selectedMachineStatsRange);
-    }
-
-    if (machineStatsReadingCount) {
-        const readingCount = Number(summary?.reading_count || 0);
-        machineStatsReadingCount.textContent = `${readingCount} ${readingCount === 1 ? "reading" : "readings"}`;
-    }
-
-    if (machineStatsLastUpdated) {
-        machineStatsLastUpdated.textContent = formatMachineStatsTimestamp(
-            latestStats?.recorded_at || summary?.latest_recorded_at
+            `avg_${keyPrefix}`,
+            `min_${keyPrefix}`,
+            `max_${keyPrefix}`,
+            unit
         );
     }
 }
 
 function renderMachineStatus(status) {
-    if (!machineStatsStatus) {
+    const isOnline = Boolean(status?.is_online);
+    if (machineStatsStatus) {
+        machineStatsStatus.textContent = status?.status_text || (isOnline ? "Components are on" : "Components are off");
+        machineStatsStatus.classList.toggle("is-on", isOnline);
+        machineStatsStatus.classList.toggle("is-off", !isOnline);
+    }
+}
+
+function buildMachineLinePath(records, valueKey, width, laneTop, laneBottom, paddingX) {
+    const points = records.map((record, index) => {
+        const numericValue = Number(record[valueKey]);
+        return {
+            x: records.length === 1 ? width / 2 : paddingX + ((width - (paddingX * 2)) * (index / (records.length - 1))),
+            value: Number.isNaN(numericValue) ? null : numericValue,
+        };
+    }).filter((point) => point.value !== null);
+
+    if (!points.length) {
+        return { path: "", area: "" };
+    }
+
+    const values = points.map((point) => point.value);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const rangeValue = Math.max(maxValue - minValue, 1);
+    const laneHeight = laneBottom - laneTop;
+    const plotted = points.map((point) => ({
+        x: point.x,
+        y: laneBottom - (((point.value - minValue) / rangeValue) * laneHeight),
+        value: point.value,
+    }));
+    const path = plotted
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+        .join(" ");
+    const area = `${path} L ${plotted[plotted.length - 1].x} ${laneBottom} L ${plotted[0].x} ${laneBottom} Z`;
+
+    return { path, area, points: plotted, minValue, maxValue };
+}
+
+function buildMachineChartSvg(records) {
+    const width = 980;
+    const height = 360;
+    const paddingX = 90;
+    const paddingTop = 24;
+    const paddingBottom = 34;
+
+    if (!records.length) {
+        return `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+                <text x="50%" y="50%" text-anchor="middle" fill="rgba(148,163,184,0.6)" font-size="18">No telemetry in this range yet</text>
+            </svg>
+        `;
+    }
+
+    const laneGap = 16;
+    const laneHeight = ((height - paddingTop - paddingBottom) - (laneGap * 2)) / 3;
+    const lanes = [
+        {
+            key: "temperature",
+            label: "Temperature",
+            unit: "C",
+            color: "#fb923c",
+            fillId: "telemetry-temp-fill",
+            top: paddingTop,
+        },
+        {
+            key: "humidity",
+            label: "Humidity",
+            unit: "%",
+            color: "#22d3ee",
+            fillId: "telemetry-humidity-fill",
+            top: paddingTop + laneHeight + laneGap,
+        },
+        {
+            key: "vibration",
+            label: "Vibration",
+            unit: "g",
+            color: "#c084fc",
+            fillId: "telemetry-vibration-fill",
+            top: paddingTop + ((laneHeight + laneGap) * 2),
+        },
+    ].map((lane) => ({
+        ...lane,
+        bottom: lane.top + laneHeight,
+        line: buildMachineLinePath(records, lane.key, width, lane.top + 10, lane.top + laneHeight - 10, paddingX),
+    }));
+
+    const verticalGridLines = Array.from({ length: 8 }, (_, index) => {
+        const x = paddingX + (((width - (paddingX * 2)) / 7) * index);
+        return `<line x1="${x}" y1="${paddingTop}" x2="${x}" y2="${height - paddingBottom}" stroke="rgba(148,163,184,0.08)" />`;
+    }).join("");
+
+    const laneMarkup = lanes.map((lane) => {
+        const lastRecord = records[records.length - 1];
+        const currentValue = formatMachineMetricValue(lastRecord?.[lane.key], ` ${lane.unit}`);
+        const minLabel = formatMachineMetricValue(lane.line.minValue, ` ${lane.unit}`);
+        const maxLabel = formatMachineMetricValue(lane.line.maxValue, ` ${lane.unit}`);
+        const centerY = lane.top + (laneHeight / 2);
+        const laneGridLines = Array.from({ length: 3 }, (_, index) => {
+            const y = lane.top + 10 + ((((laneHeight - 20)) / 2) * index);
+            return `<line x1="${paddingX}" y1="${y}" x2="${width - 22}" y2="${y}" stroke="rgba(148,163,184,0.10)" stroke-dasharray="4 8" />`;
+        }).join("");
+
+        return `
+            <rect x="${paddingX}" y="${lane.top}" width="${width - paddingX - 22}" height="${laneHeight}" rx="14" fill="rgba(15,23,42,0.24)" stroke="rgba(148,163,184,0.08)"></rect>
+            ${laneGridLines}
+            <text x="22" y="${lane.top + 22}" fill="${lane.color}" font-size="13" font-weight="700">${lane.label}</text>
+            <text x="22" y="${centerY + 4}" fill="rgba(148,163,184,0.78)" font-size="11">Min ${minLabel}</text>
+            <text x="22" y="${lane.bottom - 8}" fill="rgba(148,163,184,0.78)" font-size="11">Max ${maxLabel}</text>
+            <text x="${width - 26}" y="${lane.top + 22}" fill="${lane.color}" font-size="12" font-weight="700" text-anchor="end">Now ${currentValue}</text>
+            ${lane.line.area ? `<path d="${lane.line.area}" fill="url(#${lane.fillId})"></path>` : ""}
+            ${lane.line.path ? `<path d="${lane.line.path}" fill="none" stroke="${lane.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>` : ""}
+        `;
+    }).join("");
+
+    const timeLabels = Array.from({ length: 4 }, (_, index) => {
+        const recordIndex = Math.min(records.length - 1, Math.round((records.length - 1) * (index / 3)));
+        const dateValue = parseMachineRecordedAt(records[recordIndex]?.recorded_at);
+        const label = dateValue ? dateValue.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+        const x = paddingX + (((width - (paddingX * 2)) / 3) * index);
+        return `<text x="${x}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === 3 ? "end" : "middle"}" fill="rgba(148,163,184,0.72)" font-size="11">${label}</text>`;
+    }).join("");
+
+    return `
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+                <linearGradient id="telemetry-temp-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#fb923c" stop-opacity="0.18"></stop>
+                    <stop offset="100%" stop-color="#fb923c" stop-opacity="0"></stop>
+                </linearGradient>
+                <linearGradient id="telemetry-humidity-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.15"></stop>
+                    <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"></stop>
+                </linearGradient>
+                <linearGradient id="telemetry-vibration-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#c084fc" stop-opacity="0.16"></stop>
+                    <stop offset="100%" stop-color="#c084fc" stop-opacity="0"></stop>
+                </linearGradient>
+            </defs>
+            ${verticalGridLines}
+            ${laneMarkup}
+            ${timeLabels}
+        </svg>
+    `;
+}
+
+function renderMachineCombinedChart(records) {
+    if (!machineTelemetryChart) {
         return;
     }
 
-    const isOnline = Boolean(status?.is_online);
-    machineStatsStatus.textContent = status?.status_text || (isOnline ? "Components are on" : "Components are off");
-    machineStatsStatus.classList.toggle("is-on", isOnline);
-    machineStatsStatus.classList.toggle("is-off", !isOnline);
+    machineTelemetryChart.innerHTML = buildMachineChartSvg(records);
+    machineTelemetryChart.onmousemove = null;
+    machineTelemetryChart.onmouseleave = null;
+
+    if (!records.length || !machineTelemetryTooltip) {
+        machineTelemetryTooltip?.classList.add("hidden-block");
+        return;
+    }
+
+    machineTelemetryChart.onmousemove = (event) => {
+        const bounds = machineTelemetryChart.getBoundingClientRect();
+        const relativeX = event.clientX - bounds.left;
+        const ratio = bounds.width ? relativeX / bounds.width : 0;
+        const pointIndex = Math.min(
+            records.length - 1,
+            Math.max(0, Math.round(ratio * (records.length - 1)))
+        );
+        const record = records[pointIndex];
+        if (!record) {
+            return;
+        }
+
+        machineTelemetryTooltip.innerHTML = `
+            <strong>${new Date(record.recorded_at).toLocaleString()}</strong>
+            <span style="color:#fb923c;">Temperature: ${formatMachineMetricValue(record.temperature, " C")}</span>
+            <span style="color:#22d3ee;">Humidity: ${formatMachineMetricValue(record.humidity, "%")}</span>
+            <span style="color:#c084fc;">Vibration: ${formatMachineMetricValue(record.vibration, " g")}</span>
+        `;
+        machineTelemetryTooltip.classList.remove("hidden-block");
+        machineTelemetryTooltip.style.left = `${Math.min(bounds.width - 180, Math.max(12, relativeX + 12))}px`;
+        machineTelemetryTooltip.style.top = `${Math.max(12, event.clientY - bounds.top - 22)}px`;
+    };
+
+    machineTelemetryChart.onmouseleave = () => {
+        machineTelemetryTooltip.classList.add("hidden-block");
+    };
 }
 
-function renderMachineOfflineState(summary) {
-    if (machineMetricTemperature) {
-        machineMetricTemperature.textContent = "--";
-    }
+function renderMachineDashboardState(dashboardData, records) {
+    const filteredRecords = filterMachineHistoryByRange(records, selectedMachineStatsRange).sort((a, b) => {
+        const dateA = parseMachineRecordedAt(a.recorded_at)?.getTime() || 0;
+        const dateB = parseMachineRecordedAt(b.recorded_at)?.getTime() || 0;
+        return dateA - dateB;
+    });
+    const summary = buildMachineSummaryFromRecords(filteredRecords);
+    const latestRecord = filteredRecords[filteredRecords.length - 1] || dashboardData?.latest || null;
 
-    if (machineMetricHumidity) {
-        machineMetricHumidity.textContent = "--";
-    }
+    renderMachineRangeTabs();
+    toggleMachineCustomRangeControls();
+    renderMachineStatus(dashboardData?.status || {});
 
-    if (machineMetricVibration) {
-        machineMetricVibration.textContent = "--";
-    }
-
-    if (machineMetricTemperatureMeta) {
-        machineMetricTemperatureMeta.innerHTML = buildMachineMetaText(
-            summary,
-            "avg_temperature",
-            "min_temperature",
-            "max_temperature",
-            "C"
-        );
-    }
-
-    if (machineMetricHumidityMeta) {
-        machineMetricHumidityMeta.innerHTML = buildMachineMetaText(
-            summary,
-            "avg_humidity",
-            "min_humidity",
-            "max_humidity",
-            "%"
-        );
-    }
-
-    if (machineMetricVibrationMeta) {
-        machineMetricVibrationMeta.innerHTML = buildMachineMetaText(
-            summary,
-            "avg_vibration",
-            "min_vibration",
-            "max_vibration",
-            "g"
-        );
+    if (machineStatsMachineName) {
+        machineStatsMachineName.textContent = dashboardData?.machine_name || hardwareMap[currentBotId]?.name || "--";
     }
 
     if (machineStatsRangeLabel) {
@@ -528,13 +817,19 @@ function renderMachineOfflineState(summary) {
     }
 
     if (machineStatsReadingCount) {
-        const readingCount = Number(summary?.reading_count || 0);
-        machineStatsReadingCount.textContent = `${readingCount} ${readingCount === 1 ? "reading" : "readings"}`;
+        machineStatsReadingCount.textContent = `${summary.reading_count || 0} ${summary.reading_count === 1 ? "reading" : "readings"}`;
     }
 
     if (machineStatsLastUpdated) {
-        machineStatsLastUpdated.textContent = "Components are off";
+        machineStatsLastUpdated.textContent = formatMachineStatsTimestamp(
+            latestRecord?.recorded_at || summary.latest_recorded_at || dashboardData?.latest?.recorded_at
+        );
     }
+
+    renderMachineMetricCard(machineMetricTemperature, machineMetricTemperatureMeta, filteredRecords, "temperature", "C");
+    renderMachineMetricCard(machineMetricHumidity, machineMetricHumidityMeta, filteredRecords, "humidity", "%");
+    renderMachineMetricCard(machineMetricVibration, machineMetricVibrationMeta, filteredRecords, "vibration", "g");
+    renderMachineCombinedChart(filteredRecords);
 }
 
 function stopMachineStatsPolling() {
@@ -638,38 +933,26 @@ async function loadMachineStats() {
     }
 
     try {
-        const response = await fetch(`/api/machine-stats/${encodeURIComponent(currentBotId)}/dashboard`, {
-            headers: getAuthHeaders()
-        });
-        const data = await readJson(response);
+        const [dashboardResponse, historyResponse] = await Promise.all([
+            fetch(`/api/machine-stats/${encodeURIComponent(currentBotId)}/dashboard`, {
+                headers: getAuthHeaders()
+            }),
+            fetch(`/api/machine-stats/${encodeURIComponent(currentBotId)}/history?limit=1000`, {
+                headers: getAuthHeaders()
+            }),
+        ]);
+        const dashboardData = await readJson(dashboardResponse);
+        const historyData = await readJson(historyResponse);
 
-        if (machineStatsMachineName) {
-            machineStatsMachineName.textContent = data.machine_name || hardwareMap[currentBotId]?.name || "--";
-        }
+        machineStatsDashboardCache = dashboardData;
+        machineStatsHistoryCache = Array.isArray(historyData.history) ? historyData.history : [];
 
-        renderMachineRangeTabs();
-        renderMachineStatus(data.status);
-        renderMachineTrendChart(data.summaries || {});
-
-        if (!response.ok || !data.has_data) {
-            renderMachineMetricsFromStats(
-                data.latest || {},
-                data.summaries?.[selectedMachineStatsRange] || {}
-            );
+        if (!dashboardResponse.ok) {
+            renderMachineMetrics();
             return;
         }
 
-        if (!data.status?.is_online) {
-            renderMachineOfflineState(
-                data.summaries?.[selectedMachineStatsRange] || {}
-            );
-            return;
-        }
-
-        renderMachineMetricsFromStats(
-            data.latest || {},
-            data.summaries?.[selectedMachineStatsRange] || {}
-        );
+        renderMachineDashboardState(machineStatsDashboardCache, machineStatsHistoryCache);
     } catch (error) {
         renderMachineMetrics();
     }
@@ -678,7 +961,11 @@ async function loadMachineStats() {
 function startMachineStatsPolling() {
     stopMachineStatsPolling();
     loadMachineStats();
-    machineStatsPollHandle = setInterval(loadMachineStats, 4000);
+    if (selectedMachineStatsRange === "custom") {
+        return;
+    }
+
+    machineStatsPollHandle = setInterval(loadMachineStats, selectedMachineStatsRange === "live" ? 4000 : 12000);
 }
 
 function readRequestedBotId() {
@@ -1561,6 +1848,7 @@ if (openMachineStatsButton && machineStatsModal && isOperatorUser()) {
     openMachineStatsButton.addEventListener("click", () => {
         setMachineStatsModalState(true);
         setProfileMenuState(false);
+        setDefaultMachineCustomDates();
         renderMachineRangeTabs();
         renderMachineMetrics();
         startMachineStatsPolling();
@@ -1599,12 +1887,40 @@ if (machineStatsRangeTabs) {
             return;
         }
 
-        selectedMachineStatsRange = rangeButton.dataset.range || "last_1_hour";
+        selectedMachineStatsRange = rangeButton.dataset.range || "live";
         renderMachineRangeTabs();
-        machineTrendBars?.querySelectorAll(".machine-trend-bar-item").forEach((item, index) => {
-            const rangeKeys = ["last_1_minute", "last_1_hour", "today", "yesterday"];
-            item.classList.toggle("is-selected", rangeKeys[index] === selectedMachineStatsRange);
-        });
+
+        if (selectedMachineStatsRange === "custom") {
+            setDefaultMachineCustomDates();
+            toggleMachineCustomRangeControls();
+            if (machineStatsDashboardCache) {
+                renderMachineDashboardState(machineStatsDashboardCache, machineStatsHistoryCache);
+            }
+            stopMachineStatsPolling();
+            return;
+        }
+
+        startMachineStatsPolling();
+    });
+}
+
+if (machineCustomRangeApply) {
+    machineCustomRangeApply.addEventListener("click", () => {
+        if (selectedMachineStatsRange !== "custom") {
+            selectedMachineStatsRange = "custom";
+            renderMachineRangeTabs();
+        }
+
+        if (!machineCustomDateFrom?.value) {
+            return;
+        }
+
+        stopMachineStatsPolling();
+        if (machineStatsDashboardCache) {
+            renderMachineDashboardState(machineStatsDashboardCache, machineStatsHistoryCache);
+            return;
+        }
+
         loadMachineStats();
     });
 }
