@@ -202,30 +202,6 @@ python app.py
 
 ---
 
-# Docker Deployment
-
-## Build Image
-
-```bash
-docker build -t ece-bot .
-```
-
----
-
-## Run Container
-
-```bash
-docker run -p 8080:8080 \
--e JWT_SECRET=your_secret \
--e GEMINI_API_KEY=your_key \
--e DATABASE_URL=your_database_url \
--e MQTT_BROKER_HOST=broker_host \
--e MQTT_USERNAME=username \
--e MQTT_PASSWORD=password \
-ece-bot
-```
-
----
 
 # Hardware Roles
 
