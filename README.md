@@ -1,236 +1,267 @@
 # ECE-BOT
 
-ECE-BOT is a Flask based hybrid chatbot and machine monitoring web app for industrial hardware support. It provides hardware-specific assistants for MELFA, PLC, and CNC, plus operator dashboards for telemetry and live machine video.
+AI-powered industrial chatbot + real-time machine monitoring platform built using Flask, MQTT, PostgreSQL, Docker, Raspberry Pi, ESP8266 and ML models to reduce unnecessary LLM calls.
 
-## Features
+---
 
-- Flask backend with plain HTML, CSS, and JavaScript frontend
-- PostgreSQL database through `DATABASE_URL`
+## Live Demo
+
+https://ece-bot-zd84.onrender.com
+
+---
+
+# System Overview
+
+![ECE-BOT System Overview](https://raw.githubusercontent.com/Kr-Yogsa/ECE-BOT/main/image/image.jpeg)
+
+---
+
+## 1. Operator Management (Admin Panel)
+
+Admin dashboard used for:
+- Managing operator accounts
+- Granting/revoking access
+- Monitoring active operators
+- Industrial role-based access control
+
+This panel is designed for factory supervisors and administrators.
+
+---
+
+## 2. AI Hardware Chat Interface
+
+Industrial AI assistant supporting:
+- CNC machines
+- PLC systems
+- MELFA robots
+
+The chatbot uses:
+- TF-IDF + Random Forest intent detection
+- LLM fallback for unknown queries
+- Session-based chat history
+- Hardware-specific knowledge bases
+
+---
+
+## 3. Real-Time Telemetry Dashboard
+
+Industrial telemetry monitoring dashboard displaying:
+- Temperature
+- Humidity
+- Vibration
+- Historical telemetry graphs
+
+Sensor data is received through MQTT and stored inside PostgreSQL for analytics and monitoring.
+
+---
+
+## 4. Authentication System
+
+Secure login interface featuring:
 - JWT authentication
-- Signup OTP and forgot-password OTP through Brevo email API
-- Role based access: admin, operator, user
-- Hardware-specific chatbots loaded from JSON files in `data/`
-- TF-IDF + Random Forest intent model for known questions
-- LLM fallback for low-confidence answers
-- Chat sessions and chat history
-- Admin operator management
-- MQTT telemetry ingest for temperature, humidity, and vibration
-- Machine stats dashboard with readings, summaries, and chart
-- Raspberry Pi live camera stream support through Cloudflare Tunnel
+- OTP-based verification
+- Role-based access control
+- Password reset workflow
 
-## Project Structure
+---
 
-```text
-BOT_AI/
-|-- app.py
-|-- mqtt_worker.py
-|-- requirements.txt
-|-- Dockerfile
-|-- start_services.sh
-|-- .env.example
-|-- data/
-|   |-- hardware_config.json
-|   |-- melfa.json
-|   |-- plc.json
-|   `-- cnc.json
-|-- frontend/
-|   |-- login.html
-|   |-- signup.html
-|   |-- chat.html
-|   |-- style.css
-|   |-- auth.js
-|   |-- app.js
-|   `-- ui-config.js
-|-- services/
-|   |-- auth_service.py
-|   |-- chat_service.py
-|   |-- config_service.py
-|   |-- db.py
-|   |-- email_service.py
-|   |-- hardware_service.py
-|   |-- llm_service.py
-|   |-- ml_service.py
-|   |-- mqtt_service.py
-|   `-- hardware_llms/
-|       |-- base_llm.py
-|       |-- cnc_llm.py
-|       `-- generic_llm.py
-`-- iot/
-    |-- WIRING.md
-    |-- RASPBERRY_PI_LIVE_VIDEO.md
-    |-- raspberry_pi_camera_stream.py
-    |-- publish_cloudflare_live_url.py
-    `-- esp8266_mqtt_sensor/
-        `-- esp8266_mqtt_sensor.ino
+## 5. Mobile Responsive Chat Interface
+
+Fully responsive mobile interface for:
+- Field operators
+- Industrial technicians
+- Remote monitoring access
+
+Optimized for smartphones and tablets.
+
+---
+
+## 6. Machine Statistics & Monitoring
+
+Live machine monitoring panel showing:
+- Sensor readings
+- Machine health analytics
+- Telemetry history
+- Offline detection
+- Date-wise telemetry filtering
+
+---
+
+## 7. Live Machine Camera Stream
+
+Real-time Raspberry Pi camera integration using Cloudflare Tunnel.
+
+Supports:
+- Live CNC machine monitoring
+- Remote industrial supervision
+- Browser-based camera streaming
+- Operator/admin access control
+
+This enables remote monitoring of industrial equipment directly from the dashboard.
+
+---
+
+# Features
+
+- CNC, PLC, and MELFA hardware assistants
+- TF-IDF + Random Forest intent engine
+- LLM fallback for unknown queries
+- Real-time MQTT telemetry monitoring
+- Live Raspberry Pi machine camera streaming
+- JWT authentication + role-based access
+- Docker-ready deployment
+- PostgreSQL support
+- Operator/admin dashboards
+- OTP signup and forgot password system
+- Hardware-specific JSON knowledge system
+- MQTT-based industrial sensor ingestion
+- Cloudflare Tunnel live stream integration
+
+---
+
+# Tech Stack
+
+Flask • PostgreSQL • MQTT • Docker • Raspberry Pi • ESP8266 • Scikit-learn • JWT • Gunicorn
+
+---
+
+# Built For
+
+Smart factories, industrial labs, CNC monitoring, automation projects, and IoT-based machine supervision systems.
+
+
+# Quick Start
+
+## 1. Pull Docker Image
+
+```bash
+docker pull yogsaa/ece-bot
 ```
 
-## Roles
+---
 
-Admin:
+## 2. Create .env File
 
-- First signed-up user automatically becomes admin.
-- Can manage operators.
-- Can access machine stats and live machine video.
-
-Operator:
-
-- Can chat with hardware assistants.
-- Can access machine stats.
-- Can access live machine video.
-
-User:
-
-- Can chat with hardware assistants.
-- Cannot access machine stats, live video, or operator management.
-
-## How Chat Works
-
-1. User logs in.
-2. User selects a hardware assistant: MELFA, PLC, or CNC.
-3. Backend predicts intent using the trained local model.
-4. If confidence is above `0.75`, a predefined answer is returned.
-5. If confidence is low, LLM is used as fallback.
-6. User and assistant messages are saved in PostgreSQL.
-
-## Main APIs
-
-Auth:
-
-```text
-POST /auth/request-signup-otp
-POST /auth/verify-signup-otp
-POST /auth/signup
-POST /auth/login
-POST /auth/forgot-password/request-otp
-POST /auth/forgot-password/verify-otp
-POST /auth/forgot-password/reset
-```
-
-Chat and hardware:
-
-```text
-GET  /hardware-list
-POST /select-bot
-GET  /chat/sessions
-GET  /chat/session/<session_id>
-POST /chat
-```
-
-Admin/operator:
-
-```text
-GET    /admin/operators
-POST   /admin/operators
-PATCH  /admin/operators/<user_id>/status
-DELETE /admin/operators/<user_id>
-```
-
-Machine monitoring:
-
-```text
-GET  /api/machine-stats/<machine_id>
-GET  /api/machine-stats/<machine_id>/dashboard
-GET  /api/machine-stats/<machine_id>/history
-GET  /api/machine-live/<machine_id>
-POST /api/machine-live/<machine_id>/url
-```
-
-## Environment Variables
-
-Create `.env` from `.env.example`.
-
-Required for the web app:
+Create a `.env` file and paste the following:
 
 ```env
-JWT_SECRET=change-this-secret-key
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.your-project.supabase.co:5432/postgres
-APP_BASE_URL=https://your-app.onrender.com
-API_KEY=your-api-key
-BREVO_API_KEY=your-brevo-api-key
-MAIL_FROM=no-reply@your-verified-domain.com
+JWT_SECRET=your_jwt_secret
+LLM_API_KEY=your_LLM_api_key
+MODEL=model_name
+DATABASE_URL=postgresql://username:password@host:5432/database_name
+APP_BASE_URL=http://localhost:8080
+BREVO_API_KEY=your_brevo_api_key
+BREVO_API_TIMEOUT_SECONDS=15
+MAIL_FROM=your_email@example.com
 MAIL_FROM_NAME=ECE-BOT
-```
-
-Required for Raspberry Pi live URL auto-update:
-
-```env
-MACHINE_LIVE_UPDATE_TOKEN=use-a-long-random-secret-token
-```
-
-Optional MQTT settings:
-
-```env
-MQTT_BROKER_HOST=localhost
-MQTT_BROKER_PORT=1883
-MQTT_USERNAME=
-MQTT_PASSWORD=
+SHOW_SMTP_ERROR_DETAILS=true
+MQTT_BROKER_HOST=your_mqtt_broker
+MQTT_BROKER_PORT=8883
+MQTT_USERNAME=your_mqtt_username
+MQTT_PASSWORD=your_mqtt_password
 MQTT_TOPIC=factory/machine/+/telemetry
-MQTT_CLIENT_ID=ece-bot-mqtt-worker
-MQTT_USE_TLS=false
-MACHINE_OFFLINE_AFTER_SECONDS=15
+MQTT_CLIENT_ID=ece-bot-client
+MQTT_KEEPALIVE_SECONDS=60
+MACHINE_OFFLINE_AFTER_SECONDS=60
+MQTT_USE_TLS=true
 ```
 
-## Run Locally
+---
 
-Install Python 3.10+ and dependencies:
+## 3. Run Docker Container
+
+```bash
+docker run --env-file .env -p 8080:8080 yogsaa/ece-bot
+```
+
+---
+
+# Default Access
+
+```text
+http://localhost:8080
+```
+
+---
+
+# Run Locally Without Docker
+
+## Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Set `.env`, then run:
+---
+
+## Start Application
 
 ```bash
 python app.py
 ```
 
-Open:
+---
 
-```text
-http://localhost:5000
-```
+# Docker Deployment
 
-Note: local SQLite fallback has been removed. `DATABASE_URL` is required.
-
-## Docker Deployment
-
-Build:
+## Build Image
 
 ```bash
 docker build -t ece-bot .
 ```
 
-Run:
+---
+
+## Run Container
 
 ```bash
 docker run -p 8080:8080 \
-  -e JWT_SECRET=your-secret \
-  -e DATABASE_URL=your-postgres-url \
-  -e APP_BASE_URL=https://your-app.onrender.com \
-  -e API_KEY=your-key \
-  -e BREVO_API_KEY=your-brevo-key \
-  -e MAIL_FROM=no-reply@your-domain.com \
-  -e MACHINE_LIVE_UPDATE_TOKEN=your-live-update-token \
-  -e RUN_MQTT_WORKER=true \
-  ece-bot
+-e JWT_SECRET=your_secret \
+-e GEMINI_API_KEY=your_key \
+-e DATABASE_URL=your_database_url \
+-e MQTT_BROKER_HOST=broker_host \
+-e MQTT_USERNAME=username \
+-e MQTT_PASSWORD=password \
+ece-bot
 ```
 
-The Docker startup script runs:
+---
 
-- Gunicorn web app
-- MQTT worker in the background when `RUN_MQTT_WORKER=true`
+# Hardware Roles
 
-## MQTT Machine Monitoring
+## Admin
 
-The MQTT worker listens for telemetry and stores it in PostgreSQL.
+- Full access
+- Manage operators
+- Access live machine monitoring
+- Access telemetry dashboards
 
-Default topic:
+---
+
+## Operator
+
+- Access machine stats
+- Access live streams
+- Use industrial assistants
+
+---
+
+## User
+
+- Access chatbot only
+- No monitoring permissions
+
+---
+
+# MQTT Machine Monitoring
+
+Default telemetry topic:
 
 ```text
 factory/machine/+/telemetry
 ```
 
-Expected payload:
+Example payload:
 
 ```json
 {
@@ -242,104 +273,63 @@ Expected payload:
 }
 ```
 
-ESP8266 wiring and sketch are in:
+---
 
-```text
-iot/WIRING.md
-iot/esp8266_mqtt_sensor/esp8266_mqtt_sensor.ino
-```
+# Live Machine Video
 
-## Live Machine Video
-
-Live video uses Raspberry Pi camera + Cloudflare Tunnel.
+ECE-BOT supports:
+- Raspberry Pi camera streaming
+- Cloudflare Tunnel public stream URLs
+- Real-time operator monitoring
 
 Flow:
 
 ```text
-Raspberry Pi camera
--> local stream at http://localhost:8080/stream
--> Cloudflare quick tunnel
--> ECE-BOT receives latest stream URL
--> operator/admin opens Live Machine
+Raspberry Pi Camera
+        ↓
+Local Stream
+        ↓
+Cloudflare Tunnel
+        ↓
+ECE-BOT Dashboard
 ```
 
-### Raspberry Pi Files
+---
 
-Run these two files on the Raspberry Pi:
+# Add New Hardware Assistant
+
+1. Create a JSON file inside `data/`
+2. Add hardware config in:
 
 ```text
-iot/raspberry_pi_camera_stream.py
-iot/publish_cloudflare_live_url.py
+data/hardware_config.json
 ```
 
-Terminal 1:
+3. Restart application
+
+No backend route changes required.
+
+
+# Security Note
+
+Never upload your real `.env` file or secrets to GitHub.
+
+Add this inside `.gitignore`:
 
 ```bash
-python3 raspberry_pi_camera_stream.py
+.env
 ```
 
-This starts the camera stream:
+---
 
-```text
-http://localhost:8080/stream
-```
+# License
 
-Terminal 2:
+MIT License
 
-```bash
-python3 publish_cloudflare_live_url.py \
-  --app-base-url https://your-ece-bot-app.onrender.com \
-  --machine-id cnc \
-  --update-token your-live-update-token
-```
+---
 
-The token must match:
+# Author
 
-```env
-MACHINE_LIVE_UPDATE_TOKEN=your-live-update-token
-```
+Yajvendra Singh Naruka
 
-The helper starts:
-
-```bash
-cloudflared tunnel --url http://localhost:8080
-```
-
-Then it detects the generated `trycloudflare.com` URL, appends `/stream`, and updates ECE-BOT through:
-
-```text
-POST /api/machine-live/<machine_id>/url
-```
-
-Because quick Cloudflare URLs can change after Raspberry Pi restart, this auto-update script avoids manually changing Render environment variables every time.
-
-More details:
-
-```text
-iot/RASPBERRY_PI_LIVE_VIDEO.md
-```
-
-## Add New Hardware Bot
-
-1. Create a JSON file in `data/`, for example `new_machine.json`.
-2. Add the hardware entry to `data/hardware_config.json`.
-3. Add context and intents to the new JSON file.
-4. Restart the app so models are retrained.
-
-No backend route changes are needed.
-
-## Useful Notes
-
-- First signup becomes admin.
-- Operator invitation is done by admin from the profile menu.
-- Machine Stats and Live Machine are separate windows.
-- Static live stream URL env variables are still supported:
-
-```env
-LIVE_STREAM_URL=https://example.trycloudflare.com/stream
-CNC_LIVE_STREAM_URL=https://example.trycloudflare.com/stream
-PLC_LIVE_STREAM_URL=
-MELFA_LIVE_STREAM_URL=
-```
-
-- DB-published stream URLs take priority over static env URLs.
+Industrial AI • IoT • Docker • Machine Monitoring • Embedded Systems
