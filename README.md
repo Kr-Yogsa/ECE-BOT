@@ -36,7 +36,7 @@ Industrial AI assistant supporting:
 - MELFA robots
 
 The chatbot uses:
-- TF-IDF + Random Forest intent detection
+- TF-IDF + Logistic Regression intent detection
 - LLM fallback for unknown queries
 - Session-based chat history
 - Hardware-specific knowledge bases
@@ -104,7 +104,7 @@ This enables remote monitoring of industrial equipment directly from the dashboa
 # Features
 
 - CNC, PLC, and MELFA hardware assistants
-- TF-IDF + Random Forest intent engine
+- TF-IDF + Logistic Regression intent engine
 - LLM fallback for unknown queries
 - Real-time MQTT telemetry monitoring
 - Live Raspberry Pi machine camera streaming
