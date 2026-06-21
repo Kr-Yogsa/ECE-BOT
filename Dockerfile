@@ -8,7 +8,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade "pip==25.3" "wheel>=0.46.2" \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

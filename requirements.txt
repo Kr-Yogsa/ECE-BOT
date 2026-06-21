@@ -3,8 +3,8 @@ Flask==3.0.3
 gunicorn==23.0.0
 
 # Auth and HTTP integrations
-PyJWT==2.9.0
-requests==2.32.3
+PyJWT==2.12.1
+requests==2.33.1
 
 # Database
 psycopg[binary]>=3.2,<3.3

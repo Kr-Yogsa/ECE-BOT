@@ -12,7 +12,15 @@ https://ece-bot-zd84.onrender.com
 
 # System Overview
 
+### Software Platform
+
 ![ECE-BOT System Overview](https://raw.githubusercontent.com/Kr-Yogsa/ECE-BOT/main/image/image.jpeg)
+
+### Physical Hardware Setup
+
+![ECE-BOT Hardware Setup](https://raw.githubusercontent.com/Kr-Yogsa/ECE-BOT/main/image/Hardware.jpeg)
+
+ECE-BOT is deployed on a real Industrial IoT hardware stack consisting of Raspberry Pi 5, ESP8266 NodeMCU, DHT11 Sensor, MPU6050 Sensor and Raspberry Pi Camera Module. Sensor telemetry is transmitted through MQTT to the Raspberry Pi, where data is processed, stored and visualized through the monitoring dashboard.
 
 ---
 
