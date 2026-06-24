@@ -194,17 +194,17 @@ const suggestionMap = {
     melfa: [
         "What is MELFA robot used for?",
         "How do I troubleshoot MELFA errors?",
-        "Explain MELFA working process"
+        "Explain MELFA working process?"
     ],
     plc: [
         "What is the purpose of PLC?",
         "How does a PLC work?",
-        "Common PLC troubleshooting steps"
+        "Common PLC troubleshooting steps?"
     ],
     cnc: [
         "What is the purpose of this CNC machine?",
         "How does a CNC 3018 pro machine work?",
-        "Common CNC problems and solutions"
+        "Common CNC problems and solutions?"
     ]
 };
 

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
 :root {
     --bg-main: #1f1f1f;
     --bg-panel: #212121;
@@ -26,7 +28,7 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Outfit', "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 body {
@@ -36,6 +38,29 @@ body {
         var(--bg-main);
     color: var(--text-main);
 }
+
+/* Smooth Theme & State Transitions */
+body, 
+.auth-page,
+.auth-shell,
+.auth-showcase,
+.auth-card,
+.chat-page,
+.chat-sidebar,
+.chat-main,
+.chat-header,
+.chat-content,
+.message-bubble,
+.profile-menu-panel,
+.operator-modal-card,
+.machine-stats-card,
+button, 
+input, 
+select, 
+textarea {
+    transition: background 0.35s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
 
 /* ADDED */
 body.light-theme {
@@ -117,12 +142,20 @@ body.light-theme {
 
 .brand-version {
     margin-top: 10px;
-    color: var(--text-soft);
+    color: #fca5a5;
     font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(248, 113, 113, 0.35);
+    animation: versionPulse 1.8s ease-in-out infinite;
 }
+
+body.light-theme .brand-version {
+    color: #dc2626;
+    text-shadow: 0 0 10px rgba(220, 38, 38, 0.22);
+}
+
 
 .showcase-text {
     margin-top: 18px;
@@ -207,7 +240,7 @@ button {
     color: #ffffff;
     cursor: pointer;
     font-size: 14px;
-    transition: background 0.2s ease, opacity 0.2s ease;
+    transition: background 0.2s ease, opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 button:hover {
@@ -1574,6 +1607,16 @@ body.chat-is-empty .chat-messages {
     }
 }
 
+@keyframes sendButtonGlow {
+    0%, 100% {
+        box-shadow: 0 10px 20px rgba(16, 163, 127, 0.28), 0 0 0 rgba(16, 163, 127, 0);
+    }
+
+    50% {
+        box-shadow: 0 12px 24px rgba(16, 163, 127, 0.36), 0 0 18px rgba(19, 185, 151, 0.42);
+    }
+}
+
 @media (max-width: 900px) {
     .auth-shell,
     .chat-layout {
@@ -1871,12 +1914,12 @@ body.chat-is-empty .chat-messages {
     .chat-form {
         flex-direction: row;
         align-items: center;
-        gap: 10px;
-        padding: 10px;
+        gap: 8px;
+        padding: 8px 8px 8px 14px;
         left: 12px;
         right: 12px;
         bottom: calc(10px + env(safe-area-inset-bottom));
-        border-radius: 22px;
+        border-radius: 24px;
         background: var(--bg-form);
         backdrop-filter: blur(14px);
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
@@ -1894,20 +1937,61 @@ body.chat-is-empty .chat-messages {
     }
 
     .chat-form button {
-        width: 48px;
-        min-width: 48px;
-        min-height: 48px;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         align-self: center;
         border-radius: 50%;
         padding: 0;
         font-size: 0;
         position: relative;
+        background: linear-gradient(135deg, var(--accent), #13b997);
+        box-shadow: 0 10px 20px rgba(16, 163, 127, 0.28);
+        animation: sendButtonGlow 2.4s ease-in-out infinite;
+        transform: translateY(0);
+    }
+
+    .chat-form button:hover {
+        background: linear-gradient(135deg, #13b997, var(--accent-hover));
+        box-shadow: 0 12px 24px rgba(16, 163, 127, 0.34);
+        animation-play-state: paused;
+    }
+
+    .chat-form button:active {
+        transform: translateY(1px) scale(0.96);
+        box-shadow: 0 7px 14px rgba(16, 163, 127, 0.26);
+    }
+
+    .chat-form button:disabled {
+        animation: none;
+        box-shadow: none;
+        transform: none;
     }
 
     .chat-form button::before {
-        content: "\2191";
-        font-size: 20px;
-        line-height: 1;
+        content: "";
+        width: 4px;
+        height: 16px;
+        border-radius: 999px;
+        background: #ffffff;
+        transform: translateY(3px);
+    }
+
+    .chat-form button::after {
+        content: "";
+        width: 12px;
+        height: 12px;
+        position: absolute;
+        top: 13px;
+        left: 50%;
+        border-top: 4px solid #ffffff;
+        border-left: 4px solid #ffffff;
+        transform: translateX(-50%) rotate(45deg);
+        border-radius: 2px 0 0 0;
     }
 
     .small-button {
