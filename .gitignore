@@ -1,5 +1,9 @@
 .venv/
 __pycache__/
+iot/publish_cloudflare_live_url.py
+iot/raspberry_pi_camera_stream.py
+iot/esp8266_mqtt_sensor
+iot/esp8266_plc_hivemq_bridge
 *.pyc
 .env
 .env.example
