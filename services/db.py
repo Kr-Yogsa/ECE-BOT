@@ -76,6 +76,7 @@ class MachineTelemetry(Base):
     temperature = Column(Float)
     humidity = Column(Float)
     vibration = Column(Float)
+    proximity = Column(Float)
     source_topic = Column(String(255))
     recorded_at = Column(Text, nullable=False)
     created_at = Column(Text, nullable=False)
@@ -89,6 +90,16 @@ class MachineLiveStream(Base):
     stream_url = Column(Text, nullable=False)
     updated_at = Column(Text, nullable=False)
     source = Column(String(100))
+
+
+class MotorStatus(Base):
+    __tablename__ = "motor_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    machine_id = Column(String(100), nullable=False, index=True)
+    state = Column(Integer, nullable=False)
+    recorded_at = Column(Text, nullable=False)
+    created_at = Column(Text, nullable=False)
 
 
 def normalize_database_url(database_url):
@@ -117,8 +128,8 @@ def init_db():
         pool_recycle=300,
         pool_timeout=15,
         pool_use_lifo=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=3,
+        max_overflow=5,
         connect_args={
             "connect_timeout": 10,
             "application_name": "ece-bot",
@@ -233,6 +244,11 @@ def ensure_compatible_schema():
         number_type = "DOUBLE PRECISION" if dialect_name == "postgresql" else "FLOAT"
         telemetry_statements.append(f"ALTER TABLE machine_telemetry ADD COLUMN vibration {number_type}")
 
+    if "proximity" not in telemetry_columns:
+        dialect_name = engine.dialect.name
+        number_type = "DOUBLE PRECISION" if dialect_name == "postgresql" else "FLOAT"
+        telemetry_statements.append(f"ALTER TABLE machine_telemetry ADD COLUMN proximity {number_type}")
+
     if "recorded_at" not in telemetry_columns:
         telemetry_statements.append(
             "ALTER TABLE machine_telemetry ADD COLUMN recorded_at TEXT NOT NULL DEFAULT ''"
@@ -249,6 +265,7 @@ def create_machine_telemetry(
     temperature=None,
     humidity=None,
     vibration=None,
+    proximity=None,
     source_topic=None,
     recorded_at=None,
 ):
@@ -260,6 +277,7 @@ def create_machine_telemetry(
         temperature=temperature,
         humidity=humidity,
         vibration=vibration,
+        proximity=proximity,
         source_topic=source_topic,
         recorded_at=telemetry_recorded_at,
         created_at=now,
@@ -292,11 +310,44 @@ def get_latest_machine_telemetry(machine_id):
             "temperature",
             "humidity",
             "vibration",
+            "proximity",
             "source_topic",
             "recorded_at",
             "created_at",
         ],
     )
+
+
+def create_motor_status(machine_id, state, recorded_at=None):
+    db = get_session()
+    now = get_now()
+    recorded_time = recorded_at or datetime.now(timezone.utc).isoformat()
+
+    motor_status = MotorStatus(
+        machine_id=machine_id,
+        state=state,
+        recorded_at=recorded_time,
+        created_at=now
+    )
+    db.add(motor_status)
+    db.commit()
+    db.refresh(motor_status)
+    close_session_safely(db)
+    return motor_status.id
+
+
+def get_latest_motor_status(machine_id):
+    db = get_session()
+    status = (
+        db.query(MotorStatus)
+        .filter(MotorStatus.machine_id == machine_id)
+        .order_by(MotorStatus.recorded_at.desc(), MotorStatus.id.desc())
+        .first()
+    )
+    close_session_safely(db)
+    if not status:
+        return None
+    return to_dict(status, ["id", "machine_id", "state", "recorded_at", "created_at"])
 
 
 def get_machine_live_stream(machine_id):
@@ -362,6 +413,7 @@ def list_machine_telemetry(machine_id, limit=100):
                 "temperature",
                 "humidity",
                 "vibration",
+                "proximity",
                 "source_topic",
                 "recorded_at",
                 "created_at",
@@ -410,10 +462,14 @@ def build_machine_summary(machine_id, window_start):
                 AVG(vibration) AS avg_vibration,
                 MIN(vibration) AS min_vibration,
                 MAX(vibration) AS max_vibration,
-                MAX(recorded_at::timestamptz) AS latest_recorded_at
+                AVG(proximity) AS avg_proximity,
+                MIN(proximity) AS min_proximity,
+                MAX(proximity) AS max_proximity,
+                MAX(NULLIF(recorded_at, '')::timestamptz) AS latest_recorded_at
             FROM machine_telemetry
             WHERE machine_id = :machine_id
-              AND recorded_at::timestamptz >= :window_start
+              AND NULLIF(recorded_at, '') IS NOT NULL
+              AND NULLIF(recorded_at, '')::timestamptz >= :window_start
             """
         ),
         {"machine_id": machine_id, "window_start": window_start},
@@ -432,6 +488,9 @@ def build_machine_summary(machine_id, window_start):
             "avg_vibration": None,
             "min_vibration": None,
             "max_vibration": None,
+            "avg_proximity": None,
+            "min_proximity": None,
+            "max_proximity": None,
             "latest_recorded_at": None,
         }
 
@@ -472,11 +531,15 @@ def get_machine_dashboard(machine_id):
                 AVG(vibration) AS avg_vibration,
                 MIN(vibration) AS min_vibration,
                 MAX(vibration) AS max_vibration,
-                MAX(recorded_at::timestamptz) AS latest_recorded_at
+                AVG(proximity) AS avg_proximity,
+                MIN(proximity) AS min_proximity,
+                MAX(proximity) AS max_proximity,
+                MAX(NULLIF(recorded_at, '')::timestamptz) AS latest_recorded_at
             FROM machine_telemetry
             WHERE machine_id = :machine_id
-              AND recorded_at::timestamptz >= :window_start
-              AND recorded_at::timestamptz < :window_end
+              AND NULLIF(recorded_at, '') IS NOT NULL
+              AND NULLIF(recorded_at, '')::timestamptz >= :window_start
+              AND NULLIF(recorded_at, '')::timestamptz < :window_end
             """
         ),
         {

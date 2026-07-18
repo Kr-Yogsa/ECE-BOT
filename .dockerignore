@@ -35,3 +35,13 @@ Thumbs.db
 *.log
 tmp/
 temp/
+
+# Large design documents and proposals
+*.docx
+*.png
+*.jpeg
+*.jpg
+image/
+
+# Agent configurations and logs
+.agents/

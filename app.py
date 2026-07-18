@@ -43,6 +43,8 @@ from services.db import (
     get_machine_live_stream,
     get_latest_otp_request,
     get_latest_machine_telemetry,
+    get_latest_motor_status,
+    create_motor_status,
     init_db,
     list_machine_telemetry,
     list_users_by_role,
@@ -809,12 +811,18 @@ def machine_stats(machine_id):
         return jsonify({"error": "Unknown machine selected."}), 404
 
     latest = get_latest_machine_telemetry(normalized_machine_id)
+    latest_motor = get_latest_motor_status(normalized_machine_id)
+    motor_state = latest_motor["state"] if latest_motor else 0
+    if latest:
+        latest["motor"] = motor_state
+    else:
+        latest = {"motor": motor_state}
 
     return jsonify(
         {
             "machine_id": normalized_machine_id,
             "machine_name": hardware_data[normalized_machine_id]["name"],
-            "has_data": bool(latest),
+            "has_data": True,
             "stats": latest,
             "status": build_machine_status(latest),
         }
@@ -831,13 +839,20 @@ def machine_stats_dashboard(machine_id):
         return jsonify({"error": "Unknown machine selected."}), 404
 
     latest = get_latest_machine_telemetry(normalized_machine_id)
+    latest_motor = get_latest_motor_status(normalized_machine_id)
+    motor_state = latest_motor["state"] if latest_motor else 0
+    if latest:
+        latest["motor"] = motor_state
+    else:
+        latest = {"motor": motor_state}
+
     dashboard = get_machine_dashboard(normalized_machine_id)
 
     return jsonify(
         {
             "machine_id": normalized_machine_id,
             "machine_name": hardware_data[normalized_machine_id]["name"],
-            "has_data": bool(latest),
+            "has_data": True,
             "latest": latest,
             "status": build_machine_status(latest),
             "summaries": dashboard["summaries"],
@@ -871,6 +886,45 @@ def machine_stats_history(machine_id):
             "history": history,
         }
     )
+
+
+@app.route("/api/machine-control/<machine_id>", methods=["POST"])
+@operator_or_admin_required
+def machine_control(machine_id):
+    """Publish a motor control command to the machine via MQTT and log it in the database."""
+    normalized_machine_id = (machine_id or "").strip().lower()
+
+    if normalized_machine_id not in hardware_data:
+        return jsonify({"error": "Unknown machine selected."}), 404
+
+    data = request.get_json() or {}
+    motor_state = data.get("motor")
+
+    if motor_state is None:
+        return jsonify({"error": "Motor state is required."}), 400
+
+    try:
+        motor_val = int(float(motor_state))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid motor state value."}), 400
+
+    if motor_val not in (0, 1):
+        return jsonify({"error": "Motor state must be 0 or 1."}), 400
+
+    # 1. Publish to MQTT HiveMQ broker
+    try:
+        from services.mqtt_service import publish_control_message
+        publish_control_message(normalized_machine_id, {"motor": motor_val})
+    except Exception as error:
+        return jsonify({"error": f"Failed to publish control command: {str(error)}"}), 500
+
+    # 2. Write to motor_status table
+    try:
+        create_motor_status(normalized_machine_id, motor_val)
+    except Exception as error:
+        return jsonify({"error": f"Failed to log motor status to DB: {str(error)}"}), 500
+
+    return jsonify({"success": True, "motor": motor_val})
 
 
 @app.route("/api/machine-live/<machine_id>", methods=["GET"])

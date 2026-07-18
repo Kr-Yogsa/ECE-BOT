@@ -110,6 +110,52 @@
                     </div>
                 </div>
 
+                <section id="stepper-motor-control-card" class="stepper-control-card hidden-block">
+                    <div class="stepper-control-header">
+                        <span class="stepper-control-title">Stepper Motor Control</span>
+                    </div>
+                    <div class="stepper-control-body">
+                        <div class="stepper-status-block">
+                            <span class="stepper-label">Current Motor Status:</span>
+                            <strong id="stepper-motor-status-val" class="stepper-motor-status-value is-stopped">[STOPPED]</strong>
+                        </div>
+                        <div class="stepper-toggle-block">
+                            <span class="stepper-label">POWER ON/OFF</span>
+                            <label class="switch">
+                                <input type="checkbox" id="stepper-motor-toggle">
+                                <span class="slider round">
+                                    <svg class="power-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                                        <line x1="12" y1="2" x2="12" y2="12"></line>
+                                    </svg>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="stepper-speed-block">
+                            <div class="stepper-speed-header">
+                                <span class="speed-icon-container">
+                                    <svg class="speed-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="9"></circle>
+                                        <polyline points="12 7 12 12 15 15"></polyline>
+                                    </svg>
+                                </span>
+                                <span class="stepper-label">Speed (RPM): <strong id="stepper-speed-value" class="speed-slider-val">0</strong></span>
+                            </div>
+                            <div class="speed-slider-container">
+                                <input type="range" min="0" max="500" value="0" class="speed-slider" id="stepper-speed-range" disabled>
+                                <div class="speed-slider-labels">
+                                    <span>0</span>
+                                    <span>500</span>
+                                </div>
+                            </div>
+                            <div class="stepper-direction-buttons">
+                                <button type="button" class="direction-btn btn-forward" disabled>FORWARD &gt;</button>
+                                <button type="button" class="direction-btn btn-reverse" disabled>REVERSE &gt;</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="machine-highlight-card">
                     <p id="machine-stats-range-label" class="machine-highlight-label">Live telemetry</p>
                     <strong id="machine-stats-reading-count" class="machine-highlight-value">0 readings</strong>
@@ -117,7 +163,7 @@
                 </section>
 
                 <div class="machine-metrics-grid">
-                    <article class="machine-metric-card machine-metric-card-temperature">
+                    <article id="machine-metric-card-temperature" class="machine-metric-card machine-metric-card-temperature">
                         <span class="machine-metric-title">Temperature</span>
                         <strong id="machine-metric-temperature">--</strong>
                         <div id="machine-metric-temperature-meta" class="machine-metric-meta">
@@ -126,7 +172,7 @@
                             <span>Max --</span>
                         </div>
                     </article>
-                    <article class="machine-metric-card machine-metric-card-humidity">
+                    <article id="machine-metric-card-humidity" class="machine-metric-card machine-metric-card-humidity">
                         <span class="machine-metric-title">Humidity</span>
                         <strong id="machine-metric-humidity">--</strong>
                         <div id="machine-metric-humidity-meta" class="machine-metric-meta">
@@ -135,7 +181,7 @@
                             <span>Max --</span>
                         </div>
                     </article>
-                    <article class="machine-metric-card machine-metric-card-vibration">
+                    <article id="machine-metric-card-vibration" class="machine-metric-card machine-metric-card-vibration">
                         <span class="machine-metric-title">Vibration</span>
                         <strong id="machine-metric-vibration">--</strong>
                         <div id="machine-metric-vibration-meta" class="machine-metric-meta">
@@ -144,19 +190,24 @@
                             <span>Max --</span>
                         </div>
                     </article>
+                    <article id="machine-metric-card-proximity" class="machine-metric-card machine-metric-card-proximity hidden-block">
+                        <span class="machine-metric-title">Proximity Sensor</span>
+                        <strong id="machine-metric-proximity">--</strong>
+                        <div id="machine-metric-proximity-meta" class="machine-metric-meta">
+                            <span>Avg --</span>
+                            <span>Min --</span>
+                            <span>Max --</span>
+                        </div>
+                    </article>
                 </div>
 
-                <section class="machine-trend-card">
+                <section id="machine-trend-card" class="machine-trend-card">
                     <div class="machine-trend-header">
                         <div>
                             <p class="machine-highlight-label">Telemetry Chart</p>
-                            <strong class="machine-trend-title">Temperature, humidity, and vibration over time</strong>
+                            <strong id="machine-trend-title" class="machine-trend-title">Temperature, humidity, and vibration over time</strong>
                         </div>
-                        <div class="machine-telemetry-legend">
-                            <span class="machine-legend-item machine-legend-temperature">Temperature</span>
-                            <span class="machine-legend-item machine-legend-humidity">Humidity</span>
-                            <span class="machine-legend-item machine-legend-vibration">Vibration</span>
-                        </div>
+                        <div id="machine-telemetry-legend" class="machine-telemetry-legend"></div>
                     </div>
                     <div class="machine-telemetry-chart-shell">
                         <div id="machine-telemetry-chart" class="machine-telemetry-chart" aria-label="Combined telemetry chart"></div>

@@ -47,6 +47,15 @@ const machineMetricVibration = document.getElementById("machine-metric-vibration
 const machineMetricVibrationMeta = document.getElementById("machine-metric-vibration-meta");
 const machineTelemetryChart = document.getElementById("machine-telemetry-chart");
 const machineTelemetryTooltip = document.getElementById("machine-telemetry-tooltip");
+const machineMetricCardTemperature = document.getElementById("machine-metric-card-temperature");
+const machineMetricCardHumidity = document.getElementById("machine-metric-card-humidity");
+const machineMetricCardVibration = document.getElementById("machine-metric-card-vibration");
+const machineMetricCardProximity = document.getElementById("machine-metric-card-proximity");
+const machineMetricProximity = document.getElementById("machine-metric-proximity");
+const machineMetricProximityMeta = document.getElementById("machine-metric-proximity-meta");
+const machineTrendTitle = document.getElementById("machine-trend-title");
+const machineTrendCard = document.getElementById("machine-trend-card");
+const machineTelemetryLegend = document.getElementById("machine-telemetry-legend");
 const machineCustomRangeControls = document.getElementById("machine-custom-range-controls");
 const machineCustomDateFrom = document.getElementById("machine-custom-date-from");
 const machineCustomRangeApply = document.getElementById("machine-custom-range-apply");
@@ -75,6 +84,10 @@ const sidebarToggleButton = document.getElementById("sidebar-toggle");
 
 let currentSessionId = null;
 let currentBotId = "";
+
+function isPlcMachine() {
+    return currentBotId === "plc";
+}
 let hardwareMap = {};
 let lastUserMessage = "";
 let requestedBotId = "";
@@ -83,6 +96,7 @@ let selectedMachineStatsRange = "live";
 let machineStatsHistoryCache = [];
 let machineStatsDashboardCache = null;
 let isCreatingOperatorRequestPending = false;
+let hasResetMotorOnLoad = false;
 const pendingOperatorStatusRequests = new Set();
 const SESSION_HEARTBEAT_INTERVAL_MS = 60000;
 let sessionHeartbeatHandle = null;
@@ -236,6 +250,20 @@ if (savedUser) {
 
 resetMachineLiveView();
 
+function updateMachineMetricVisibility() {
+    const showPlc = isPlcMachine();
+
+    machineMetricCardTemperature?.classList.toggle("hidden-block", showPlc);
+    machineMetricCardHumidity?.classList.toggle("hidden-block", showPlc);
+    machineMetricCardVibration?.classList.toggle("hidden-block", showPlc);
+    machineMetricCardProximity?.classList.toggle("hidden-block", true);
+    machineTrendCard?.classList.toggle("hidden-block", showPlc);
+
+    const showStepperControl = showPlc && (selectedMachineStatsRange === "live");
+    const stepperMotorControlCard = document.getElementById("stepper-motor-control-card");
+    stepperMotorControlCard?.classList.toggle("hidden-block", !showStepperControl);
+}
+
 function renderMachineMetrics() {
     if (!machineMetricsSection) {
         return;
@@ -263,13 +291,14 @@ function renderMachineMetrics() {
     }
 
     if (machineStatsReadingCount) {
-        machineStatsReadingCount.textContent = "0 readings";
+        machineStatsReadingCount.textContent = isPlcMachine() ? "0 Count" : "0 readings";
     }
 
     if (machineStatsLastUpdated) {
         machineStatsLastUpdated.textContent = "No telemetry yet";
     }
 
+    updateMachineMetricVisibility();
     renderMachineMetricCard(machineMetricTemperature, machineMetricTemperatureMeta, [], "temperature", "C");
     renderMachineMetricCard(machineMetricHumidity, machineMetricHumidityMeta, [], "humidity", "%");
     renderMachineMetricCard(machineMetricVibration, machineMetricVibrationMeta, [], "vibration", "g");
@@ -807,6 +836,30 @@ function renderMachineDashboardState(dashboardData, records) {
     renderMachineRangeTabs();
     toggleMachineCustomRangeControls();
     renderMachineStatus(dashboardData?.status || {});
+    updateMachineMetricVisibility();
+
+    if (isPlcMachine()) {
+        const motorState = (dashboardData?.latest && dashboardData.latest.motor !== undefined) ? dashboardData.latest.motor : 0;
+
+        if (!hasResetMotorOnLoad) {
+            hasResetMotorOnLoad = true;
+            if (motorState == 1) {
+                turnOffMotorOnLoad();
+                return;
+            }
+        }
+
+        const motorText = document.getElementById("stepper-motor-status-val");
+        const motorToggle = document.getElementById("stepper-motor-toggle");
+
+        if (motorText) {
+            motorText.textContent = (motorState == 1) ? "[RUNNING]" : "[STOPPED]";
+            motorText.className = "stepper-motor-status-value " + ((motorState == 1) ? "is-running" : "is-stopped");
+        }
+        if (motorToggle && !window.isTogglingMotor) {
+            motorToggle.checked = (motorState == 1);
+        }
+    }
 
     if (machineStatsMachineName) {
         machineStatsMachineName.textContent = dashboardData?.machine_name || hardwareMap[currentBotId]?.name || "--";
@@ -817,7 +870,11 @@ function renderMachineDashboardState(dashboardData, records) {
     }
 
     if (machineStatsReadingCount) {
-        machineStatsReadingCount.textContent = `${summary.reading_count || 0} ${summary.reading_count === 1 ? "reading" : "readings"}`;
+        if (isPlcMachine()) {
+            machineStatsReadingCount.textContent = `${summary.reading_count || 0} Count`;
+        } else {
+            machineStatsReadingCount.textContent = `${summary.reading_count || 0} ${summary.reading_count === 1 ? "reading" : "readings"}`;
+        }
     }
 
     if (machineStatsLastUpdated) {
@@ -965,7 +1022,7 @@ function startMachineStatsPolling() {
         return;
     }
 
-    machineStatsPollHandle = setInterval(loadMachineStats, selectedMachineStatsRange === "live" ? 4000 : 12000);
+    machineStatsPollHandle = setInterval(loadMachineStats, selectedMachineStatsRange === "live" ? 500 : 12000);
 }
 
 function readRequestedBotId() {
@@ -1871,6 +1928,75 @@ if (startLiveMachineButton) {
 
 if (stopLiveMachineButton) {
     stopLiveMachineButton.addEventListener("click", stopMachineLiveStream);
+}
+
+async function turnOffMotorOnLoad() {
+    const motorText = document.getElementById("stepper-motor-status-val");
+    const motorToggle = document.getElementById("stepper-motor-toggle");
+
+    // Force UI to show stopped/OFF optimistically
+    if (motorText) {
+        motorText.textContent = "[STOPPED]";
+        motorText.className = "stepper-motor-status-value is-stopped";
+    }
+    if (motorToggle) {
+        motorToggle.checked = false;
+    }
+
+    try {
+        await fetch(`/api/machine-control/${encodeURIComponent(currentBotId)}`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ motor: 0 })
+        });
+    } catch (error) {
+        console.error("Failed to automatically stop motor on load/refresh:", error);
+    }
+}
+
+window.isTogglingMotor = false;
+const stepperMotorToggle = document.getElementById("stepper-motor-toggle");
+if (stepperMotorToggle) {
+    stepperMotorToggle.addEventListener("change", async (event) => {
+        if (!currentBotId) return;
+        const isChecked = event.target.checked;
+        const motorValue = isChecked ? 1 : 0;
+
+        window.isTogglingMotor = true;
+
+        // Optimistically update label and styling
+        const motorText = document.getElementById("stepper-motor-status-val");
+        if (motorText) {
+            motorText.textContent = isChecked ? "[RUNNING]" : "[STOPPED]";
+            motorText.className = "stepper-motor-status-value " + (isChecked ? "is-running" : "is-stopped");
+        }
+
+        try {
+            const response = await fetch(`/api/machine-control/${encodeURIComponent(currentBotId)}`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ motor: motorValue })
+            });
+            if (!response.ok) {
+                // Revert state if error
+                event.target.checked = !isChecked;
+                if (motorText) {
+                    motorText.textContent = !isChecked ? "[RUNNING]" : "[STOPPED]";
+                    motorText.className = "stepper-motor-status-value " + (!isChecked ? "is-running" : "is-stopped");
+                }
+            }
+        } catch (error) {
+            console.error("Error controlling motor:", error);
+            // Revert state if error
+            event.target.checked = !isChecked;
+            if (motorText) {
+                motorText.textContent = !isChecked ? "[RUNNING]" : "[STOPPED]";
+                motorText.className = "stepper-motor-status-value " + (!isChecked ? "is-running" : "is-stopped");
+            }
+        } finally {
+            window.isTogglingMotor = false;
+        }
+    });
 }
 
 if (machineLiveImage) {

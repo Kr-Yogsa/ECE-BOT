@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from services.db import create_machine_telemetry
+from services.db import create_machine_telemetry, create_motor_status
 
 try:
     import paho.mqtt.client as mqtt
@@ -88,9 +88,25 @@ def store_telemetry_message(topic, payload):
         temperature=parse_float(payload.get("temperature")),
         humidity=parse_float(payload.get("humidity")),
         vibration=parse_float(payload.get("vibration")),
+        proximity=parse_float(
+            payload.get("proximity", payload.get("proximity_sensor"))
+        ),
         source_topic=topic,
         recorded_at=parse_recorded_at(payload.get("timestamp")),
     )
+
+    # Save motor status if present in the telemetry payload
+    motor_val = payload.get("motor")
+    if motor_val is not None:
+        try:
+            state = int(float(motor_val))
+            create_motor_status(
+                machine_id=machine_id,
+                state=state,
+                recorded_at=parse_recorded_at(payload.get("timestamp")),
+            )
+        except (TypeError, ValueError):
+            pass
 
 
 def build_mqtt_client():
@@ -136,3 +152,23 @@ def start_mqtt_listener():
     client, config = build_mqtt_client()
     client.connect(config["host"], config["port"], config["keepalive"])
     client.loop_forever()
+
+
+def publish_control_message(machine_id, payload):
+    if mqtt is None:
+        raise RuntimeError("paho-mqtt is not installed.")
+
+    config = get_mqtt_config()
+    client_id = f"{config['client_id']}-publisher"
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
+
+    if config["username"]:
+        client.username_pw_set(config["username"], config["password"])
+
+    if config["use_tls"]:
+        client.tls_set()
+
+    client.connect(config["host"], config["port"], config["keepalive"])
+    topic = f"factory/machine/{machine_id}/control"
+    client.publish(topic, json.dumps(payload), qos=1, retain=True)
+    client.disconnect()

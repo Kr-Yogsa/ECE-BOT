@@ -63,3 +63,49 @@ That means the server receives only the already-processed vibration value, not t
 ## Next improvement
 
 For better timestamps, add NTP sync on the ESP8266 so `timestamp` becomes real UTC time instead of uptime-based placeholder time.
+
+---
+
+# PLC to ESP8266 to HiveMQ Setup
+
+If you are using the ESP8266 as a PLC bridge instead of local DHT11/MPU6050 sensors, use this flow:
+
+`Proximity Sensor -> PLC X0 -> ESP8266 over Modbus TCP -> HiveMQ -> Web app`
+
+## Network
+
+- Connect the `PLC` to your router with Ethernet.
+- Connect the `ESP8266` to the same router over Wi-Fi.
+- Give the PLC a reachable IP address such as `192.168.137.250`.
+- Make sure the PLC Modbus TCP server is enabled on port `502`.
+
+## ESP8266 sketch settings
+
+Update these values inside [esp8266_mqtt_sensor.ino](/C:/Users/Yajvendra/OneDrive/Desktop/BOT_AI/iot/esp8266_mqtt_sensor/esp8266_mqtt_sensor.ino):
+
+- `WIFI_SSID`
+- `WIFI_PASSWORD`
+- `PLC_IP`
+- `MODBUS_UNIT_ID`
+- `MQTT_HOST`
+- `MQTT_PORT`
+- `MQTT_USERNAME`
+- `MQTT_PASSWORD`
+
+## MQTT payload
+
+The sketch publishes this payload format:
+
+```json
+{
+  "machine_id": "plc",
+  "proximity": 1,
+  "timestamp": "2026-07-13T12:00:00Z"
+}
+```
+
+## Arduino libraries you need for PLC bridge mode
+
+- `PubSubClient`
+
+The sketch reads Modbus TCP packets directly, so no extra Modbus Arduino library is required.
